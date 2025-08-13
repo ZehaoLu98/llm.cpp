@@ -32,5 +32,8 @@ add_definitions(-DEIGEN_DONT_PARALLELIZE)
 add_definitions(-DEIGEN_USE_THREADS)
 include_directories(${EIGEN3_INCLUDE_DIR})
 
+# gmp
+add_subdirectory(third_party/GMP)
+
 add_subdirectory(llmc)
 add_subdirectory(llmcpp)

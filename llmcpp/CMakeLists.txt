@@ -85,6 +85,8 @@ if (CUDA_FOUND)
     add_executable(train_gpt2_gpu train_gpt2.cu)
     target_link_libraries(train_gpt2_gpu
             gpt_gpu
+            gmp
     )
     target_compile_options(train_gpt2_gpu PRIVATE -O3)
+    
 endif ()

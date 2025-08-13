@@ -2,6 +2,8 @@
 #define LLM_CPP__GPT_HPP_
 
 #include "nn.hpp"
+#include <string>
+#include "gmp/profile.h"
 
 #ifdef EIGEN_USE_GPU
 #include "cuda_profile_util.hpp"
@@ -446,18 +448,18 @@ struct Block {
     auto ln1_y_2d = MakeMatrix(ln1_y_->data<Type>(), B * T, C);
     auto ln1_mean_1d = MakeFlat(ln1_mean_->data<Type>(), B * T);
     auto ln1_rstd_1d = MakeFlat(ln1_rstd_->data<Type>(), B * T);
-    ln1_->Forward(x_2d, ln1_y_2d, ln1_mean_1d, ln1_rstd_1d);
+    GMP_PROFILING("LayerNorm1", ln1_->Forward, x_2d, ln1_y_2d, ln1_mean_1d, ln1_rstd_1d);
 
     // Attention
     auto ln1_y_3d = MakeConst3DTensor(ln1_y_2d.data(), B, T, C);
     auto att_y_3d = Make3DTensor(att_y_->data<Type>(), B, T, C);
-    attn_->Forward(ln1_y_3d, att_y_3d);
+    GMP_PROFILING("Attention", attn_->Forward, ln1_y_3d, att_y_3d);
 
     // Residual
     auto x_1d = MakeConstFlat(x.data(), B * T * C);
     auto att_y_1d = MakeConstFlat(att_y_->data<Type>(), B * T * C);
     auto residual1_1d = MakeFlat(residual1_->data<Type>(), residual1_->size());
-    nn::Residual::Forward(x_1d, att_y_1d, residual1_1d);
+    GMP_PROFILING("Residual after Attention", nn::Residual::Forward, x_1d, att_y_1d, residual1_1d);
 
     // LN2
     auto ln2_y_2d = MakeMatrix(ln2_y_->data<Type>(), B * T, C);
@@ -465,18 +467,18 @@ struct Block {
     auto ln2_mean_1d = MakeFlat(ln2_mean_->data<Type>(), B * T);
     auto ln2_rstd_1d = MakeFlat(ln2_rstd_->data<Type>(), B * T);
     auto residual1_2d = MakeConstMatrix(residual1_->data<Type>(), B * T, C);
-    ln2_->Forward(residual1_2d, ln2_y_2d, ln2_mean_1d, ln2_rstd_1d);
+    GMP_PROFILING("LayerNorm2", ln2_->Forward, residual1_2d, ln2_y_2d, ln2_mean_1d, ln2_rstd_1d);
 
     // MLP
     auto mlp_y_2d = MakeMatrix(mlp_y_->data<Type>(), B * T, C);
-    mlp_->Forward(ln2_y_2d_const, mlp_y_2d);
+    GMP_PROFILING("MLP", mlp_->Forward, ln2_y_2d_const, mlp_y_2d);
 
     // Residual
     auto residual1_1d_const =
         MakeConstFlat(residual1_->data<Type>(), residual1_->size());
     auto mlp_y_1d = MakeConstFlat(mlp_y_->data<Type>(), B * T * C);
     auto y_1d = MakeFlat(y.data(), y.size());
-    nn::Residual::Forward(residual1_1d_const, mlp_y_1d, y_1d);
+    GMP_PROFILING("Residual after MLP", nn::Residual::Forward, residual1_1d_const, mlp_y_1d, y_1d);
   }
 
   void Backward(typename TTypes<Type, 3>::ConstTensor x,
@@ -656,10 +658,8 @@ struct GPT {
     lnf_mean_->LazyAllocate(BT);
     lnf_rstd_->LazyAllocate(BT);
 
-    wte_->Forward(idx,
-                  absl::MakeSpan(tok_emb_->data<Type>(), tok_emb_->size()));
-    wpe_->Forward(pos,
-                  absl::MakeSpan(pos_emb_->data<Type>(), pos_emb_->size()));
+    GMP_PROFILING("Token Embedding", wte_->Forward, idx, absl::MakeSpan(tok_emb_->data<Type>(), tok_emb_->size()));
+    GMP_PROFILING("Position Embedding", wpe_->Forward, pos, absl::MakeSpan(pos_emb_->data<Type>(), pos_emb_->size()));
 
     auto tok_emb = tok_emb_->matrix<Type>(B, TC);
     auto pos_emb = pos_emb_->flat<Type>();
@@ -676,7 +676,7 @@ struct GPT {
       Type* y = block_y_->data<Type>() + l * BTC;
       auto block_x_3d = MakeConst3DTensor(x, B, T, C);
       auto block_y_3d = Make3DTensor(y, B, T, C);
-      block->Forward(block_x_3d, block_y_3d);
+      GMP_PROFILING("Transformer Block Layer " + std::to_string(l), block->Forward, block_x_3d, block_y_3d);
     }
 
     auto block_out_2d =
@@ -684,7 +684,7 @@ struct GPT {
     auto lnf_y = MakeMatrix(lnf_y_->data<Type>(), BT, C);
     auto lnf_mean = MakeFlat(lnf_mean_->data<Type>(), BT);
     auto lnf_rstd = MakeFlat(lnf_rstd_->data<Type>(), BT);
-    lnf_->Forward(block_out_2d, lnf_y, lnf_mean, lnf_rstd);
+    GMP_PROFILING("Final Layer Norm",lnf_->Forward, block_out_2d, lnf_y, lnf_mean, lnf_rstd);
   }
 
   void Forward(typename TTypes<int>::ConstMatrix idx,
@@ -709,7 +709,10 @@ struct GPT {
     //    nn::MatMul::Forward(lnf_y, lm_head, logits_2d);
     Eigen::array<Eigen::IndexPair<int>, 1> product_dims = {
         Eigen::IndexPair<int>(1, 1)};
-    logits_2d.device(nn::g_device) = lnf_y.contract(lm_head, product_dims);
+    auto get_logits = [&](){
+      logits_2d.device(nn::g_device) = lnf_y.contract(lm_head, product_dims);
+    };
+    GMP_PROFILING("Logits Computation", get_logits);
   }
 
   void SoftmaxForwardCPU(typename TTypes<Type>::ConstMatrix logits,
@@ -813,7 +816,7 @@ struct GPT {
 
     auto logits_2d_const = MakeConstMatrix(logits.data(), BT, vocab_size_);
     auto labels_2d_const = MakeConstMatrix(labels.data(), BT, vocab_size_);
-    SoftmaxForwardGPU(logits_2d_const, labels_2d_const, loss);
+    GMP_PROFILING("GPU SoftmaxForward", SoftmaxForwardGPU, logits_2d_const, labels_2d_const, loss);
   }
 
   void SoftmaxBackwardCPU(absl::Span<const int> targets) {

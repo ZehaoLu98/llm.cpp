@@ -444,41 +444,54 @@ struct Block {
     mlp_y_->LazyAllocate(B * T * C);
 
     // LN1
+    GmpProfiler::getInstance()->startProfiling("LN1", GmpProfileType::CONCURRENT_KERNEL);
     auto x_2d = MakeConstMatrix(x.data(), B * T, C);
     auto ln1_y_2d = MakeMatrix(ln1_y_->data<Type>(), B * T, C);
     auto ln1_mean_1d = MakeFlat(ln1_mean_->data<Type>(), B * T);
     auto ln1_rstd_1d = MakeFlat(ln1_rstd_->data<Type>(), B * T);
     GMP_PROFILING("LayerNorm1", ln1_->Forward, x_2d, ln1_y_2d, ln1_mean_1d, ln1_rstd_1d);
+    GmpProfiler::getInstance()->endProfiling(GmpProfileType::CONCURRENT_KERNEL);
 
     // Attention
+    GmpProfiler::getInstance()->startProfiling("Attention", GmpProfileType::CONCURRENT_KERNEL);
     auto ln1_y_3d = MakeConst3DTensor(ln1_y_2d.data(), B, T, C);
     auto att_y_3d = Make3DTensor(att_y_->data<Type>(), B, T, C);
     GMP_PROFILING("Attention", attn_->Forward, ln1_y_3d, att_y_3d);
+    GmpProfiler::getInstance()->endProfiling(GmpProfileType::CONCURRENT_KERNEL);
 
     // Residual
+    GmpProfiler::getInstance()->startProfiling("Residual after Attention", GmpProfileType::CONCURRENT_KERNEL);
     auto x_1d = MakeConstFlat(x.data(), B * T * C);
     auto att_y_1d = MakeConstFlat(att_y_->data<Type>(), B * T * C);
     auto residual1_1d = MakeFlat(residual1_->data<Type>(), residual1_->size());
     GMP_PROFILING("Residual after Attention", nn::Residual::Forward, x_1d, att_y_1d, residual1_1d);
+    GmpProfiler::getInstance()->endProfiling(GmpProfileType::CONCURRENT_KERNEL);
 
     // LN2
+    GmpProfiler::getInstance()->startProfiling("LN2", GmpProfileType::CONCURRENT_KERNEL);
     auto ln2_y_2d = MakeMatrix(ln2_y_->data<Type>(), B * T, C);
     auto ln2_y_2d_const = MakeConstMatrix(ln2_y_->data<Type>(), B * T, C);
     auto ln2_mean_1d = MakeFlat(ln2_mean_->data<Type>(), B * T);
     auto ln2_rstd_1d = MakeFlat(ln2_rstd_->data<Type>(), B * T);
     auto residual1_2d = MakeConstMatrix(residual1_->data<Type>(), B * T, C);
     GMP_PROFILING("LayerNorm2", ln2_->Forward, residual1_2d, ln2_y_2d, ln2_mean_1d, ln2_rstd_1d);
+    GmpProfiler::getInstance()->endProfiling(GmpProfileType::CONCURRENT_KERNEL);
 
     // MLP
+    GmpProfiler::getInstance()->startProfiling("MLP", GmpProfileType::CONCURRENT_KERNEL);
     auto mlp_y_2d = MakeMatrix(mlp_y_->data<Type>(), B * T, C);
     GMP_PROFILING("MLP", mlp_->Forward, ln2_y_2d_const, mlp_y_2d);
+    GmpProfiler::getInstance()->endProfiling(GmpProfileType::CONCURRENT_KERNEL);
+
 
     // Residual
+    GmpProfiler::getInstance()->startProfiling("Residual after MLP", GmpProfileType::CONCURRENT_KERNEL);
     auto residual1_1d_const =
         MakeConstFlat(residual1_->data<Type>(), residual1_->size());
     auto mlp_y_1d = MakeConstFlat(mlp_y_->data<Type>(), B * T * C);
     auto y_1d = MakeFlat(y.data(), y.size());
     GMP_PROFILING("Residual after MLP", nn::Residual::Forward, residual1_1d_const, mlp_y_1d, y_1d);
+    GmpProfiler::getInstance()->endProfiling(GmpProfileType::CONCURRENT_KERNEL);
   }
 
   void Backward(typename TTypes<Type, 3>::ConstTensor x,

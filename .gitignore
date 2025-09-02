@@ -34,8 +34,14 @@ dev/cuda/global_norm
 
 # log files
 *.log
+logs/
 
 # clion files
 .idea
 cmake-build-*
 build
+
+*.ncu-rep
+llmcpp/CMakeFiles/
+
+usr/

@@ -9,8 +9,6 @@
 #include "optim.hpp"
 #include "gmp/profile.h"
 
-// sampler
-
 unsigned int random_u32(unsigned long long *state)
 {
   // xorshift rng: https://en.wikipedia.org/wiki/Xorshift#xorshift.2A
@@ -54,6 +52,14 @@ void cudaCheck(cudaError_t error, const char *file, int line)
 
 int main(int argc, char **argv)
 {
+  DRIVER_API_CALL(cuInit(0));
+
+  int dev = 0;
+
+  cudaSetDevice(dev); // pick device via runtime (makes primary ctx the one runtime will use)
+                      // OPTIONAL: cudaSetDeviceFlags(...) before creation
+  cudaFree(0);        // force creation of the primary context now
+
   gpt2::GPT2 model;
   int num_steps = argc > 1 ? atoi(argv[1]) : 40;
   model.BuildFromCheckpoint("gpt2_124M.bin");
@@ -82,10 +88,10 @@ int main(int argc, char **argv)
   printf("train dataset num_batches: %zu\n", train_loader.num_tokens / (B * T));
   printf("val dataset num_batches: %zu\n", val_loader.num_tokens / (B * T));
   int val_num_batches = 5;
-
   // build the Tokenizer
   Tokenizer tokenizer;
   tokenizer_init(&tokenizer, "gpt2_tokenizer.bin");
+  printf("tokenizer vocab size: %d\n", tokenizer.vocab_size);
 
   // some memory for generating samples from the model
   unsigned long long rng_state = 1337;
@@ -105,14 +111,18 @@ int main(int argc, char **argv)
   optim::AdamW optimizer(parameters, 1e-4f, 0.9f, 0.999f, 1e-8f, 0.0f);
   std::vector<double> timings;
   int current_pass = 0;
-  while (!GmpProfiler::getInstance()->isAllPassSubmitted())
-  {
+  printf("starting training for %d steps\n", num_steps);
+
+  #ifdef USE_CUPTI
+  // while (!GmpProfiler::getInstance()->isAllPassSubmitted())
+  // {
+  #endif
     printf("pass %zu\n", current_pass++);
     GmpProfiler::getInstance()->startRangeProfiling();
     for (int step = 0; step <= num_steps; step++)
     {
       printf("step %d\n", step);
-      NvtxRange step_range("Train step", step);
+      // NvtxRange step_range("Train step", step);
 
       // // once in a while estimate the validation loss
       // if (step % 10 == 0) {
@@ -218,7 +228,9 @@ int main(int argc, char **argv)
       }
     }
     GmpProfiler::getInstance()->stopRangeProfiling();
-  }
+  #ifdef USE_CUPTI
+  // }
+  #endif
   GmpProfiler::getInstance()->decodeCounterData();
 
   GmpProfiler::getInstance()->printProfilerRanges();

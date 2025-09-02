@@ -470,24 +470,18 @@ namespace gpt
       auto ln1_y_2d = MakeMatrix(ln1_y_->data<Type>(), B * T, C);
       auto ln1_mean_1d = MakeFlat(ln1_mean_->data<Type>(), B * T);
       auto ln1_rstd_1d = MakeFlat(ln1_rstd_->data<Type>(), B * T);
-      GmpProfiler::getInstance()->pushRange("LayerNorm1");
       ln1_->Forward(x_2d, ln1_y_2d, ln1_mean_1d, ln1_rstd_1d);
-      GmpProfiler::getInstance()->popRange();
 
       // Attention
       auto ln1_y_3d = MakeConst3DTensor(ln1_y_2d.data(), B, T, C);
       auto att_y_3d = Make3DTensor(att_y_->data<Type>(), B, T, C);
-      GmpProfiler::getInstance()->pushRange("Attention");
       attn_->Forward(ln1_y_3d, att_y_3d);
-      GmpProfiler::getInstance()->popRange();
 
       // Residual
       auto x_1d = MakeConstFlat(x.data(), B * T * C);
       auto att_y_1d = MakeConstFlat(att_y_->data<Type>(), B * T * C);
       auto residual1_1d = MakeFlat(residual1_->data<Type>(), residual1_->size());
-      GmpProfiler::getInstance()->pushRange("Residual after Attention");
       nn::Residual::Forward(x_1d, att_y_1d, residual1_1d);
-      GmpProfiler::getInstance()->popRange();
 
       // LN2
       auto ln2_y_2d = MakeMatrix(ln2_y_->data<Type>(), B * T, C);
@@ -495,24 +489,18 @@ namespace gpt
       auto ln2_mean_1d = MakeFlat(ln2_mean_->data<Type>(), B * T);
       auto ln2_rstd_1d = MakeFlat(ln2_rstd_->data<Type>(), B * T);
       auto residual1_2d = MakeConstMatrix(residual1_->data<Type>(), B * T, C);
-      GmpProfiler::getInstance()->pushRange("LayerNorm2");
       ln2_->Forward(residual1_2d, ln2_y_2d, ln2_mean_1d, ln2_rstd_1d);
-      GmpProfiler::getInstance()->popRange();
 
       // MLP
       auto mlp_y_2d = MakeMatrix(mlp_y_->data<Type>(), B * T, C);
-      GmpProfiler::getInstance()->pushRange("MLP");
       mlp_->Forward(ln2_y_2d_const, mlp_y_2d);
-      GmpProfiler::getInstance()->popRange();
 
       // Residual
       auto residual1_1d_const =
           MakeConstFlat(residual1_->data<Type>(), residual1_->size());
       auto mlp_y_1d = MakeConstFlat(mlp_y_->data<Type>(), B * T * C);
       auto y_1d = MakeFlat(y.data(), y.size());
-      GmpProfiler::getInstance()->pushRange("Residual");
       nn::Residual::Forward(residual1_1d_const, mlp_y_1d, y_1d);
-      GmpProfiler::getInstance()->popRange();
     }
 
     void Backward(typename TTypes<Type, 3>::ConstTensor x,
@@ -699,12 +687,8 @@ namespace gpt
       lnf_y_->LazyAllocate(BT * C);
       lnf_mean_->LazyAllocate(BT);
       lnf_rstd_->LazyAllocate(BT);
-      GmpProfiler::getInstance()->pushRange("Token Embedding");
       wte_->Forward(idx, absl::MakeSpan(tok_emb_->data<Type>(), tok_emb_->size()));
-      GmpProfiler::getInstance()->popRange();
-      GmpProfiler::getInstance()->pushRange("Position Embedding");
       wpe_->Forward(pos, absl::MakeSpan(pos_emb_->data<Type>(), pos_emb_->size()));
-      GmpProfiler::getInstance()->popRange();
 
       auto tok_emb = tok_emb_->matrix<Type>(B, TC);
       auto pos_emb = pos_emb_->flat<Type>();
@@ -721,8 +705,10 @@ namespace gpt
         Type *y = block_y_->data<Type>() + l * BTC;
         auto block_x_3d = MakeConst3DTensor(x, B, T, C);
         auto block_y_3d = Make3DTensor(y, B, T, C);
-        GmpProfiler::getInstance()->pushRange("Transformer Block");
+        GmpProfiler::getInstance()->pushRange("why");
+        GmpProfiler::getInstance()->pushRange("Block", GmpProfileType::CONCURRENT_KERNEL);
         block->Forward(block_x_3d, block_y_3d);
+        GmpProfiler::getInstance()->popRange("Block", GmpProfileType::CONCURRENT_KERNEL);
         GmpProfiler::getInstance()->popRange();
       }
 
@@ -758,9 +744,7 @@ namespace gpt
       Eigen::array<Eigen::IndexPair<int>, 1> product_dims = {
           Eigen::IndexPair<int>(1, 1)};
 
-      GmpProfiler::getInstance()->pushRange("get logits");
       logits_2d.device(nn::g_device) = lnf_y.contract(lm_head, product_dims);
-      GmpProfiler::getInstance()->popRange();
     }
 
     void SoftmaxForwardCPU(typename TTypes<Type>::ConstMatrix logits,
@@ -868,9 +852,7 @@ namespace gpt
 
       auto logits_2d_const = MakeConstMatrix(logits.data(), BT, vocab_size_);
       auto labels_2d_const = MakeConstMatrix(labels.data(), BT, vocab_size_);
-      GmpProfiler::getInstance()->pushRange("SoftmaxCrossEntropy");
       SoftmaxForwardGPU(logits_2d_const, labels_2d_const, loss);
-      GmpProfiler::getInstance()->popRange();
     }
 
     void SoftmaxBackwardCPU(absl::Span<const int> targets)

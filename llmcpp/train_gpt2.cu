@@ -62,6 +62,12 @@ int main(int argc, char **argv)
 
   gpt2::GPT2 model;
   int num_steps = argc > 1 ? atoi(argv[1]) : 40;
+
+  for(int metricsIdx = 2; metricsIdx < argc; metricsIdx++)
+  {
+    GmpProfiler::getInstance()->addMetrics(argv[metricsIdx]);
+  }
+
   model.BuildFromCheckpoint("gpt2_124M.bin");
 
   // build the DataLoaders from tokens files. for now use tiny_shakespeare if
@@ -114,6 +120,8 @@ int main(int argc, char **argv)
   printf("starting training for %d steps\n", num_steps);
 
   #ifdef USE_CUPTI
+  GmpProfiler::getInstance()->init();
+
   // while (!GmpProfiler::getInstance()->isAllPassSubmitted())
   // {
   #endif

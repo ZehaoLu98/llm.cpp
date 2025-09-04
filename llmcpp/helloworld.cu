@@ -238,7 +238,7 @@ int main()
 
     hello_kernel<<<1, 4>>>();
     int curr_pass = 0;
-    GmpProfiler::getInstance();
+    GmpProfiler::getInstance()->init();
     printf("Starting profiling runs...\n");
 #ifdef USE_CUPTI
 // while (GmpProfiler::getInstance()->isAllPassSubmitted() == false)
@@ -246,7 +246,7 @@ int main()
 #endif
     printf("current pass: %zu\n", curr_pass++);
     GmpProfiler::getInstance()->startRangeProfiling();
-    for (int i = 0; i < 5; i++)
+    for (int i = 0; i < 1000; i++)
     {
         launch_add();
     }

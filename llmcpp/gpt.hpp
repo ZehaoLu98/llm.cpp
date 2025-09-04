@@ -445,6 +445,7 @@ namespace gpt
     void Forward(typename TTypes<Type, 3>::ConstTensor x,
                  typename TTypes<Type, 3>::Tensor y)
     {
+      static int counter = 0;
       PROFILE_TRACE_FN("Block");
 
       // x: [B, T, C], y: [B, T, C]
@@ -470,18 +471,24 @@ namespace gpt
       auto ln1_y_2d = MakeMatrix(ln1_y_->data<Type>(), B * T, C);
       auto ln1_mean_1d = MakeFlat(ln1_mean_->data<Type>(), B * T);
       auto ln1_rstd_1d = MakeFlat(ln1_rstd_->data<Type>(), B * T);
+      if(counter<2) GmpProfiler::getInstance()->pushRange("LN1_"+std::to_string(counter), GmpProfileType::CONCURRENT_KERNEL);
       ln1_->Forward(x_2d, ln1_y_2d, ln1_mean_1d, ln1_rstd_1d);
+      if(counter<2) GmpProfiler::getInstance()->popRange("LN1_"+std::to_string(counter), GmpProfileType::CONCURRENT_KERNEL);
 
       // Attention
       auto ln1_y_3d = MakeConst3DTensor(ln1_y_2d.data(), B, T, C);
       auto att_y_3d = Make3DTensor(att_y_->data<Type>(), B, T, C);
+      if(counter<2) GmpProfiler::getInstance()->pushRange("Attention_"+std::to_string(counter), GmpProfileType::CONCURRENT_KERNEL);
       attn_->Forward(ln1_y_3d, att_y_3d);
+      if(counter<2) GmpProfiler::getInstance()->popRange("Attention_"+std::to_string(counter), GmpProfileType::CONCURRENT_KERNEL);
 
       // Residual
       auto x_1d = MakeConstFlat(x.data(), B * T * C);
       auto att_y_1d = MakeConstFlat(att_y_->data<Type>(), B * T * C);
       auto residual1_1d = MakeFlat(residual1_->data<Type>(), residual1_->size());
+      if(counter<2) GmpProfiler::getInstance()->pushRange("Residual_"+std::to_string(counter), GmpProfileType::CONCURRENT_KERNEL);
       nn::Residual::Forward(x_1d, att_y_1d, residual1_1d);
+      if(counter<2) GmpProfiler::getInstance()->popRange("Residual_"+std::to_string(counter), GmpProfileType::CONCURRENT_KERNEL);
 
       // LN2
       auto ln2_y_2d = MakeMatrix(ln2_y_->data<Type>(), B * T, C);
@@ -489,18 +496,25 @@ namespace gpt
       auto ln2_mean_1d = MakeFlat(ln2_mean_->data<Type>(), B * T);
       auto ln2_rstd_1d = MakeFlat(ln2_rstd_->data<Type>(), B * T);
       auto residual1_2d = MakeConstMatrix(residual1_->data<Type>(), B * T, C);
+      if(counter<2) GmpProfiler::getInstance()->pushRange("LN2_"+std::to_string(counter), GmpProfileType::CONCURRENT_KERNEL);
       ln2_->Forward(residual1_2d, ln2_y_2d, ln2_mean_1d, ln2_rstd_1d);
+      if(counter<2) GmpProfiler::getInstance()->popRange("LN2_"+std::to_string(counter), GmpProfileType::CONCURRENT_KERNEL);
 
       // MLP
       auto mlp_y_2d = MakeMatrix(mlp_y_->data<Type>(), B * T, C);
+      if(counter<2) GmpProfiler::getInstance()->pushRange("MLP_"+std::to_string(counter), GmpProfileType::CONCURRENT_KERNEL);
       mlp_->Forward(ln2_y_2d_const, mlp_y_2d);
+      if(counter<2) GmpProfiler::getInstance()->popRange("MLP_"+std::to_string(counter), GmpProfileType::CONCURRENT_KERNEL);
 
       // Residual
       auto residual1_1d_const =
           MakeConstFlat(residual1_->data<Type>(), residual1_->size());
       auto mlp_y_1d = MakeConstFlat(mlp_y_->data<Type>(), B * T * C);
       auto y_1d = MakeFlat(y.data(), y.size());
+      if(counter<2) GmpProfiler::getInstance()->pushRange("Residual2_"+std::to_string(counter), GmpProfileType::CONCURRENT_KERNEL);
       nn::Residual::Forward(residual1_1d_const, mlp_y_1d, y_1d);
+      if(counter<2) GmpProfiler::getInstance()->popRange("Residual2_"+std::to_string(counter), GmpProfileType::CONCURRENT_KERNEL);
+      counter++;
     }
 
     void Backward(typename TTypes<Type, 3>::ConstTensor x,
@@ -705,11 +719,8 @@ namespace gpt
         Type *y = block_y_->data<Type>() + l * BTC;
         auto block_x_3d = MakeConst3DTensor(x, B, T, C);
         auto block_y_3d = Make3DTensor(y, B, T, C);
-        GmpProfiler::getInstance()->pushRange("why");
-        GmpProfiler::getInstance()->pushRange("Block", GmpProfileType::CONCURRENT_KERNEL);
+
         block->Forward(block_x_3d, block_y_3d);
-        GmpProfiler::getInstance()->popRange("Block", GmpProfileType::CONCURRENT_KERNEL);
-        GmpProfiler::getInstance()->popRange();
       }
 
       auto block_out_2d =

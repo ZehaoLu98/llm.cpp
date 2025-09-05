@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-BIN="./build/llmcpp/train_gpt2_gpu"
+# BIN="./build/llmcpp/train_gpt2_gpu"
+BIN="./llmcpp/helloworld"
+
 DEVICE_ID="0"
 
 run() {
@@ -11,7 +13,7 @@ run() {
 }
 
 # -------------------------
-# Group 1 (no sub-groups) — run all together
+# Group 1 — run all together
 # -------------------------
 grp1=(
   "gpu__time_duration.sum"
@@ -22,17 +24,33 @@ grp1=(
 )
 run "${grp1[@]}"
 
+grp2=(
+  "gpu__compute_memory_request_throughput"
+  "gpu__compute_memory_throughput"
+  "gpu__dram_throughput"
+  "dram__throughput"
+  
+)
+
 # -------------------------
 # Group 2 — Sub Group 1
 # -------------------------
 grp2_sub1=(
   "smsp__inst_executed.sum"
+)
+run "${grp2_sub1[@]}"
+
+#Group 2 — Sub Group 4
+grp2_sub4=(
   "smsp__sass_inst_executed_op_shared_ld.sum"
   "smsp__sass_inst_executed_op_shared_st.sum"
   "smsp__sass_inst_executed_op_global_ld.sum"
   "smsp__sass_inst_executed_op_global_st.sum"
+  "smsp__sass_data_bytes_mem_global_op_ld.sum"
+  "smsp__sass_data_bytes_mem_global_op_st.sum"
 )
-run "${grp2_sub1[@]}"
+run "${grp2_sub4[@]}"
+
 
 # Group 2 — Sub Group 2
 grp2_sub2=(
@@ -49,6 +67,13 @@ grp2_sub3=(
   "sm__sass_inst_executed_op_ldgsts_cache_bypass.sum"
 )
 run "${grp2_sub3[@]}"
+
+# Group 2 — Sub Group 4
+grp2_sub4=(
+  "sm__threads_launched.sum"
+  "sm__warps_active.sum"
+)
+run "${grp2_sub4[@]}"
 
 # -------------------------
 # Group 3 — Sub Group 1
@@ -93,6 +118,12 @@ grp3_sub6=(
   "dram__sectors_write.sum"
 )
 run "${grp3_sub6[@]}"
+
+grp3_sub7=(
+  "lts__t_requests_srcunit_l1_op_read.sum"
+  "lts__t_requests_srcunit_l1_op_write.sum"
+)
+run "${grp3_sub7[@]}"
 
 # -------------------------
 # Group 4 — Sub Group 1

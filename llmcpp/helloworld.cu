@@ -6,6 +6,7 @@
 #include <cupti.h>
 #include <stdio.h>
 #include <iomanip>
+#include <cassert>
 #include "gmp/profile.h"
 
 // #define CUPTI_CALL(call)                                                         \
@@ -114,6 +115,45 @@ __global__ void square(float *A, int N)
     }
 }
 
+__global__ void saxpy(int n, float a, float *x, float *y)
+{
+    for (int i = blockIdx.x * blockDim.x + threadIdx.x; 
+         i < n; 
+         i += blockDim.x * gridDim.x) 
+      {
+          y[i] = a * x[i] + y[i];
+      }
+}
+
+__global__ void saxpy_more_compute(int n, float a, float *x, float *y)
+{
+    for (int i = blockIdx.x * blockDim.x + threadIdx.x; 
+         i < n; 
+         i += blockDim.x * gridDim.x) 
+      {
+          y[i] = a * x[i] + y[i];
+          y[i] = a * x[i] + y[i];
+          y[i] = a * x[i] + y[i];
+          y[i] = a * x[i] + y[i];
+          y[i] = a * x[i] + y[i];
+          y[i] = a * x[i] + y[i];
+          y[i] = a * x[i] + y[i];
+          y[i] = a * x[i] + y[i];
+          y[i] = a * x[i] + y[i];
+          y[i] = a * x[i] + y[i];
+          y[i] = a * x[i] + y[i];
+          y[i] = a * x[i] + y[i];
+          y[i] = a * x[i] + y[i];
+          y[i] = a * x[i] + y[i];
+          y[i] = a * x[i] + y[i];
+          y[i] = a * x[i] + y[i];
+          y[i] = a * x[i] + y[i];
+          y[i] = a * x[i] + y[i];
+          y[i] = a * x[i] + y[i];
+          y[i] = a * x[i] + y[i];
+      }
+}
+
 __global__ void sumReduction(float *input, float *output, int N)
 {
     __shared__ float sdata[256]; // shared memory for partial sums
@@ -137,19 +177,19 @@ __global__ void sumReduction(float *input, float *output, int N)
         output[blockIdx.x] = sdata[0];
 }
 
-#define N 4096 // vector length
+#define N 13824*4*1024*16 // vector length, 3.456GB
 
 void launch_add()
 {
     size_t size = N * sizeof(float);
 
     // Host vectors
-    float h_A[N], h_B[N], h_C[N];
-    for (int i = 0; i < N; i++)
-    {
-        h_A[i] = i;
-        h_B[i] = i * 10;
-    }
+    // float h_A[N], h_B[N], h_C[N];
+    // for (int i = 0; i < N; i++)
+    // {
+    //     h_A[i] = i;
+    //     h_B[i] = i * 10;
+    // }
 
     // Device vectors
     float *d_A_1, *d_B_1, *d_C_1;
@@ -172,6 +212,7 @@ void launch_add()
     cudaMalloc((void **)&d_A_4, size);
     cudaMalloc((void **)&d_B_4, size);
     cudaMalloc((void **)&d_C_4, size);
+    printf("Allocated device memory\n");
 
     // Copy from host to device
     // cudaMemcpy(d_A_1, h_A, size, cudaMemcpyHostToDevice);
@@ -186,37 +227,44 @@ void launch_add()
     // Launch kernel
     int threadsPerBlock = 512;
     int blocksPerGrid = (N + threadsPerBlock - 1) / threadsPerBlock;
-    // GmpProfiler::getInstance()->pushRange("launch_add", GmpProfileType::CONCURRENT_KERNEL);
-    // vecAdd<<<blocksPerGrid / 2, threadsPerBlock>>>(d_A_1, d_B_1, d_C_1, N / 2);
-    // GmpProfiler::getInstance()->popRange("launch_add", GmpProfileType::CONCURRENT_KERNEL);
-    // GmpProfiler::getInstance()->pushRange("launch_multiplication", GmpProfileType::CONCURRENT_KERNEL);
-    // vecAdd<<<blocksPerGrid / 4, threadsPerBlock>>>(d_A_2, d_B_2, d_C_2, N / 4);
-    // GmpProfiler::getInstance()->popRange("launch_multiplication", GmpProfileType::CONCURRENT_KERNEL);
-    // GmpProfiler::getInstance()->pushRange("launch_square", GmpProfileType::CONCURRENT_KERNEL);
-    // multiply_complex<<<blocksPerGrid, threadsPerBlock>>>(d_A_3, d_B_3, d_C_3, N);
-    // GmpProfiler::getInstance()->popRange("launch_square", GmpProfileType::CONCURRENT_KERNEL);
-    // GmpProfiler::getInstance()->pushRange("launch_sumReduction", GmpProfileType::CONCURRENT_KERNEL);
-    // vecAdd<<<blocksPerGrid / 8, threadsPerBlock>>>(d_A_4, d_B_4, d_C_4, N / 8);
-    // GmpProfiler::getInstance()->popRange("launch_sumReduction", GmpProfileType::CONCURRENT_KERNEL);
 
-    // GmpProfiler::getInstance()->pushRange("launch_add");
-    // vecAdd<<<blocksPerGrid / 2, threadsPerBlock>>>(d_A_1, d_B_1, d_C_1, N / 2);
-    // vecAdd<<<blocksPerGrid / 4, threadsPerBlock>>>(d_A_2, d_B_2, d_C_2, N / 4);
-    // multiply_complex<<<blocksPerGrid, threadsPerBlock>>>(d_A_3, d_B_3, d_C_3, N);
-    // GmpProfiler::getInstance()->popRange();
     cudaDeviceSynchronize();
 
-    hello_kernel<<<1, 4>>>();
-    GmpProfiler::getInstance()->pushRange("allallall");
-    GmpProfiler::getInstance()->pushRange("all", GmpProfileType::CONCURRENT_KERNEL);
-    vecAdd<<<blocksPerGrid / 2, threadsPerBlock>>>(d_A_1, d_B_1, d_C_1, N / 2);
-    vecAdd<<<blocksPerGrid / 4, threadsPerBlock>>>(d_A_2, d_B_2, d_C_2, N / 4);
-    multiply_complex<<<blocksPerGrid, threadsPerBlock>>>(d_A_3, d_B_3, d_C_3, N);
-    vecAdd<<<blocksPerGrid / 8, threadsPerBlock>>>(d_A_1, d_B_1, d_C_1, N / 8);
-    GmpProfiler::getInstance()->popRange("all", GmpProfileType::CONCURRENT_KERNEL);
-    GmpProfiler::getInstance()->popRange();
-    cudaDeviceSynchronize();
-    // Copy result back
+    // Normal
+    // GmpProfiler::getInstance()->pushRange("saxpy1", GmpProfileType::CONCURRENT_KERNEL);
+    // saxpy<<<108, 128>>>(N, 2.0f, d_A_1, d_B_1);
+    // GmpProfiler::getInstance()->popRange("saxpy1", GmpProfileType::CONCURRENT_KERNEL);
+    // GmpProfiler::getInstance()->pushRange("saxpy2", GmpProfileType::CONCURRENT_KERNEL);
+    // saxpy<<<108, 128*2>>>(N, 2.0f, d_A_2, d_B_2);
+    // GmpProfiler::getInstance()->popRange("saxpy2", GmpProfileType::CONCURRENT_KERNEL);
+    // GmpProfiler::getInstance()->pushRange("saxpy3", GmpProfileType::CONCURRENT_KERNEL);
+    // saxpy<<<108, 128*4>>>(N, 2.0f, d_A_3, d_B_3);
+    // GmpProfiler::getInstance()->popRange("saxpy3", GmpProfileType::CONCURRENT_KERNEL);
+    // GmpProfiler::getInstance()->pushRange("saxpy4", GmpProfileType::CONCURRENT_KERNEL);
+    // saxpy<<<54, 256>>>(N, 2.0f, d_A_4, d_B_4);
+    // GmpProfiler::getInstance()->popRange("saxpy4", GmpProfileType::CONCURRENT_KERNEL);
+
+    // More Computation
+    // GmpProfiler::getInstance()->pushRange("saxpy1_more_compute", GmpProfileType::CONCURRENT_KERNEL);
+    // saxpy_more_compute<<<108, 128>>>(N, 2.0f, d_A_1, d_B_1);
+    // GmpProfiler::getInstance()->popRange("saxpy1_more_compute", GmpProfileType::CONCURRENT_KERNEL);
+    // GmpProfiler::getInstance()->pushRange("saxpy4_more_compute", GmpProfileType::CONCURRENT_KERNEL);
+    // saxpy_more_compute<<<54, 256>>>(N, 2.0f, d_A_4, d_B_4);
+    // GmpProfiler::getInstance()->popRange("saxpy4_more_compute", GmpProfileType::CONCURRENT_KERNEL);
+
+    // More kernels in the range
+    // GmpProfiler::getInstance()->pushRange("1saxpy", GmpProfileType::CONCURRENT_KERNEL);
+    // saxpy<<<108, 128>>>(N, 2.0f, d_A_1, d_B_1);
+    // GmpProfiler::getInstance()->popRange("1saxpy", GmpProfileType::CONCURRENT_KERNEL);
+    // GmpProfiler::getInstance()->pushRange("2saxpy", GmpProfileType::CONCURRENT_KERNEL);
+    // saxpy<<<108, 128>>>(N, 2.0f, d_A_1, d_B_1);
+    // saxpy<<<108, 128>>>(N, 2.0f, d_A_2, d_B_2);
+    // GmpProfiler::getInstance()->popRange("2saxpy", GmpProfileType::CONCURRENT_KERNEL);
+    // GmpProfiler::getInstance()->pushRange("3saxpy", GmpProfileType::CONCURRENT_KERNEL);
+    // saxpy<<<108, 128>>>(N, 2.0f, d_A_1, d_B_1);
+    // saxpy<<<108, 128>>>(N, 2.0f, d_A_2, d_B_2);
+    // saxpy<<<108, 128>>>(N, 2.0f, d_A_3, d_B_3);
+    // GmpProfiler::getInstance()->popRange("3saxpy", GmpProfileType::CONCURRENT_KERNEL);
 
     // Cleanup
     cudaFree(d_A_1);
@@ -230,15 +278,17 @@ void launch_add()
     cudaFree(d_C_3);
 }
 
-int main()
+int main(int argc, char** argv)
 {
-    // CUPTI_CALL(cuptiActivityEnable(CUPTI_ACTIVITY_KIND_CONCURRENT_KERNEL));
-
-    // CUPTI_CALL(cuptiActivityRegisterCallbacks(bufferRequested, bufferCompleted));
-
+    assert(argc>2);
+    for(int i=2; i<argc; i++){
+        GmpProfiler::getInstance()->addMetrics(argv[i]);
+    }
+    
     hello_kernel<<<1, 4>>>();
     int curr_pass = 0;
     GmpProfiler::getInstance()->init();
+
     printf("Starting profiling runs...\n");
 #ifdef USE_CUPTI
 // while (GmpProfiler::getInstance()->isAllPassSubmitted() == false)
@@ -246,10 +296,10 @@ int main()
 #endif
     printf("current pass: %zu\n", curr_pass++);
     GmpProfiler::getInstance()->startRangeProfiling();
-    for (int i = 0; i < 1000; i++)
-    {
+    // for (int i = 0; i < 1000; i++)
+    // {
         launch_add();
-    }
+    // }
     GmpProfiler::getInstance()->stopRangeProfiling();
 #ifdef USE_CUPTI
 // }
@@ -258,7 +308,6 @@ int main()
     GmpProfiler::getInstance()->decodeCounterData();
     GmpProfiler::getInstance()->printProfilerRanges();
 
-    CUPTI_CALL(cuptiActivityFlushAll(1));
 
     CUPTI_CALL(cuptiActivityDisable(CUPTI_ACTIVITY_KIND_CONCURRENT_KERNEL));
 

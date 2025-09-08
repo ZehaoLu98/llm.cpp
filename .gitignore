@@ -45,3 +45,5 @@ build
 llmcpp/CMakeFiles/
 
 usr/
+output/
+helloworld

@@ -62,10 +62,20 @@ int main(int argc, char **argv)
 
   gpt2::GPT2 model;
   int num_steps = argc > 1 ? atoi(argv[1]) : 40;
-
-  for(int metricsIdx = 2; metricsIdx < argc; metricsIdx++)
+  std::string output_path = "";
+  assert(argc >= 2);
+  for(int i = 2; i < argc; i++)
   {
-    GmpProfiler::getInstance()->addMetrics(argv[metricsIdx]);
+      if(strcmp(argv[i], "-o") == 0){
+          printf("Setting output path: %s\n", argv[i + 1]);
+          assert(i + 1 < argc);
+          output_path = argv[i + 1];
+          i++;
+      }
+      else{
+          printf("Adding metric: %s\n", argv[i]);
+          GmpProfiler::getInstance()->addMetrics(argv[i]);
+      }  
   }
 
   model.BuildFromCheckpoint("gpt2_124M.bin");
@@ -118,129 +128,119 @@ int main(int argc, char **argv)
   std::vector<double> timings;
   int current_pass = 0;
   printf("starting training for %d steps\n", num_steps);
-
-  #ifdef USE_CUPTI
   GmpProfiler::getInstance()->init();
+  printf("pass %zu\n", current_pass++);
+  GmpProfiler::getInstance()->startRangeProfiling();
+  for (int step = 0; step <= num_steps; step++)
+  {
+    printf("step %d\n", step);
+    // NvtxRange step_range("Train step", step);
 
-  // while (!GmpProfiler::getInstance()->isAllPassSubmitted())
-  // {
-  #endif
-    printf("pass %zu\n", current_pass++);
-    GmpProfiler::getInstance()->startRangeProfiling();
-    for (int step = 0; step <= num_steps; step++)
+    // // once in a while estimate the validation loss
+    // if (step % 10 == 0) {
+    //   float val_loss = 0.0f;
+    //   dataloader_reset(&val_loader);
+    //   for (int i = 0; i < val_num_batches; i++) {
+    //     NvtxRange validation_range("validation");
+    //     dataloader_next_batch(&val_loader);
+    //     float loss = 0.0f;
+    //     auto idx = TTypes<int>::ConstMatrix(val_loader.inputs, B, T);
+    //     std::memset(label.get(), 0, sizeof(float) * B * T * V);
+    //     nn::OntHot(MakeConstFlat(val_loader.targets, B * T),
+    //                MakeMatrix(label.get(), B * T, V));
+    //     cudaCheck(cudaMemcpy(d_label.data<float>(), label.get(),
+    //                          sizeof(float) * B * T * V,
+    //                          cudaMemcpyHostToDevice));
+    //     auto label_3d = d_label.const_tensor_3d<float>(B, T, V);
+    //     auto logit_3d = d_logit.tensor_3d<float>(B, T, V);
+    //     model.gpt2_->ForwardGPU(idx, label_3d, logit_3d, &loss);
+    //     val_loss += loss;
+    //   }
+    //   val_loss /= val_num_batches;
+
+    //   if (step == 0) {
+    //     size_t num_activations = model.gpt2_->NumActivations();
+    //     printf("num_activations: %zu(%zu MB)\n", num_activations,
+    //            num_activations * sizeof(floatX) / 1024 / 1024);
+    //   }
+    //   printf("val loss %f\n", val_loss);
+    // }
+
+    // // once in a while do model inference to print generated text
+    // if (step > 0 && step % 20 == 0) {
+    //   NvtxRange generation_range("generation");
+    //   // fill up gen_tokens with the GPT2_EOT, which kicks off the generation
+    //   for (int i = 0; i < B * T; ++i) {
+    //     gen_tokens[i] = tokenizer.eot_token;
+    //   }
+    //   // now sample from the model autoregressively
+    //   printf("generating:\n---\n");
+    //   for (int t = 1; t < genT; t++) {
+    //     // note that inference is very wasteful here because for each token
+    //     // we re-calculate the forward pass for all of (B,T) positions from
+    //     // scratch but the inference here is just for sanity checking anyway and
+    //     // we can maybe optimize a bit more later, with careful tests
+    //     auto gen_tokens_2d = TTypes<int>::ConstMatrix(gen_tokens, B, T);
+    //     auto logit_3d = d_logit.tensor_3d<float>(B, T, V);
+    //     model.gpt2_->Forward(gen_tokens_2d, logit_3d);
+    //     auto logit_2d = d_logit.const_matrix<float>(B * T, V);
+    //     auto prob_2d = d_prob.matrix<float>(B * T, V);
+    //     softmax.Forward(logit_2d, prob_2d);
+    //     nn::g_device.memcpyDeviceToHost(prob.get(), d_prob.data<float>(),
+    //                                     sizeof(float) * B * T * V);
+    //     nn::g_device.synchronize();
+    //     // furthermore, below we're only using b=0 (i.e. the first row) of all B
+    //     // rows we're in principle running B "inference streams" in parallel
+    //     // here but only using position 0 get the Vp-dimensional vector probs[0,
+    //     // t-1, :]
+    //     float* probs = prob.get() + (t - 1) * V;
+    //     float coin = random_f32(&rng_state);
+    //     // note we're only sampling from the first V elements, ignoring padding
+    //     // (the probabilities in the padded region should be zero anyway)
+    //     int next_token = sample_mult(probs, model.config.vocab_size, coin);
+    //     gen_tokens[t] = next_token;
+    //     // print the generated token, either using the Tokenizer or a fallback
+    //     if (tokenizer.init_ok) {
+    //       const char* token_str = tokenizer_decode(&tokenizer, next_token);
+    //       safe_printf(token_str);
+    //     } else {
+    //       // fall back to printing the token id
+    //       printf("%d ", next_token);
+    //     }
+    //     fflush(stdout);
+    //   }
+    //   printf("\n---\n");
+    // }
+
+    // do a training step
+    clock_gettime(CLOCK_MONOTONIC, &start);
+    dataloader_next_batch(&train_loader);
+    float loss = 0.0f;
+    auto idx = TTypes<int>::ConstMatrix(train_loader.inputs, B, T);
+    std::memset(label.get(), 0, sizeof(float) * B * T * V);
+    nn::OntHot(MakeConstFlat(train_loader.targets, B * T),
+                MakeMatrix(label.get(), B * T, V));
+    cudaCheck(cudaMemcpy(d_label.data<float>(), label.get(),
+                          sizeof(float) * B * T * V, cudaMemcpyHostToDevice));
+    auto label_3d = d_label.const_tensor_3d<float>(B, T, V);
+    auto logit_3d = d_logit.tensor_3d<float>(B, T, V);
+    model.gpt2_->ForwardGPU(idx, label_3d, logit_3d, &loss);
+    optimizer.ZeroGrad();
+    model.gpt2_->BackwardGPU(idx);
+    optimizer.Step(step + 1);
+    clock_gettime(CLOCK_MONOTONIC, &end);
+    double time_elapsed_s =
+        (end.tv_sec - start.tv_sec) + (end.tv_nsec - start.tv_nsec) / 1e9;
+
+    printf("step %d: train loss %f (took %f ms)\n", step, loss,
+            time_elapsed_s * 1000);
+    if (step)
     {
-      printf("step %d\n", step);
-      // NvtxRange step_range("Train step", step);
-
-      // // once in a while estimate the validation loss
-      // if (step % 10 == 0) {
-      //   float val_loss = 0.0f;
-      //   dataloader_reset(&val_loader);
-      //   for (int i = 0; i < val_num_batches; i++) {
-      //     NvtxRange validation_range("validation");
-      //     dataloader_next_batch(&val_loader);
-      //     float loss = 0.0f;
-      //     auto idx = TTypes<int>::ConstMatrix(val_loader.inputs, B, T);
-      //     std::memset(label.get(), 0, sizeof(float) * B * T * V);
-      //     nn::OntHot(MakeConstFlat(val_loader.targets, B * T),
-      //                MakeMatrix(label.get(), B * T, V));
-      //     cudaCheck(cudaMemcpy(d_label.data<float>(), label.get(),
-      //                          sizeof(float) * B * T * V,
-      //                          cudaMemcpyHostToDevice));
-      //     auto label_3d = d_label.const_tensor_3d<float>(B, T, V);
-      //     auto logit_3d = d_logit.tensor_3d<float>(B, T, V);
-      //     model.gpt2_->ForwardGPU(idx, label_3d, logit_3d, &loss);
-      //     val_loss += loss;
-      //   }
-      //   val_loss /= val_num_batches;
-
-      //   if (step == 0) {
-      //     size_t num_activations = model.gpt2_->NumActivations();
-      //     printf("num_activations: %zu(%zu MB)\n", num_activations,
-      //            num_activations * sizeof(floatX) / 1024 / 1024);
-      //   }
-      //   printf("val loss %f\n", val_loss);
-      // }
-
-      // // once in a while do model inference to print generated text
-      // if (step > 0 && step % 20 == 0) {
-      //   NvtxRange generation_range("generation");
-      //   // fill up gen_tokens with the GPT2_EOT, which kicks off the generation
-      //   for (int i = 0; i < B * T; ++i) {
-      //     gen_tokens[i] = tokenizer.eot_token;
-      //   }
-      //   // now sample from the model autoregressively
-      //   printf("generating:\n---\n");
-      //   for (int t = 1; t < genT; t++) {
-      //     // note that inference is very wasteful here because for each token
-      //     // we re-calculate the forward pass for all of (B,T) positions from
-      //     // scratch but the inference here is just for sanity checking anyway and
-      //     // we can maybe optimize a bit more later, with careful tests
-      //     auto gen_tokens_2d = TTypes<int>::ConstMatrix(gen_tokens, B, T);
-      //     auto logit_3d = d_logit.tensor_3d<float>(B, T, V);
-      //     model.gpt2_->Forward(gen_tokens_2d, logit_3d);
-      //     auto logit_2d = d_logit.const_matrix<float>(B * T, V);
-      //     auto prob_2d = d_prob.matrix<float>(B * T, V);
-      //     softmax.Forward(logit_2d, prob_2d);
-      //     nn::g_device.memcpyDeviceToHost(prob.get(), d_prob.data<float>(),
-      //                                     sizeof(float) * B * T * V);
-      //     nn::g_device.synchronize();
-      //     // furthermore, below we're only using b=0 (i.e. the first row) of all B
-      //     // rows we're in principle running B "inference streams" in parallel
-      //     // here but only using position 0 get the Vp-dimensional vector probs[0,
-      //     // t-1, :]
-      //     float* probs = prob.get() + (t - 1) * V;
-      //     float coin = random_f32(&rng_state);
-      //     // note we're only sampling from the first V elements, ignoring padding
-      //     // (the probabilities in the padded region should be zero anyway)
-      //     int next_token = sample_mult(probs, model.config.vocab_size, coin);
-      //     gen_tokens[t] = next_token;
-      //     // print the generated token, either using the Tokenizer or a fallback
-      //     if (tokenizer.init_ok) {
-      //       const char* token_str = tokenizer_decode(&tokenizer, next_token);
-      //       safe_printf(token_str);
-      //     } else {
-      //       // fall back to printing the token id
-      //       printf("%d ", next_token);
-      //     }
-      //     fflush(stdout);
-      //   }
-      //   printf("\n---\n");
-      // }
-
-      // do a training step
-      clock_gettime(CLOCK_MONOTONIC, &start);
-      dataloader_next_batch(&train_loader);
-      float loss = 0.0f;
-      auto idx = TTypes<int>::ConstMatrix(train_loader.inputs, B, T);
-      std::memset(label.get(), 0, sizeof(float) * B * T * V);
-      nn::OntHot(MakeConstFlat(train_loader.targets, B * T),
-                 MakeMatrix(label.get(), B * T, V));
-      cudaCheck(cudaMemcpy(d_label.data<float>(), label.get(),
-                           sizeof(float) * B * T * V, cudaMemcpyHostToDevice));
-      auto label_3d = d_label.const_tensor_3d<float>(B, T, V);
-      auto logit_3d = d_logit.tensor_3d<float>(B, T, V);
-      model.gpt2_->ForwardGPU(idx, label_3d, logit_3d, &loss);
-      optimizer.ZeroGrad();
-      model.gpt2_->BackwardGPU(idx);
-      optimizer.Step(step + 1);
-      clock_gettime(CLOCK_MONOTONIC, &end);
-      double time_elapsed_s =
-          (end.tv_sec - start.tv_sec) + (end.tv_nsec - start.tv_nsec) / 1e9;
-
-      printf("step %d: train loss %f (took %f ms)\n", step, loss,
-             time_elapsed_s * 1000);
-      if (step)
-      {
-        timings.push_back(time_elapsed_s);
-      }
+      timings.push_back(time_elapsed_s);
     }
-    GmpProfiler::getInstance()->stopRangeProfiling();
-  #ifdef USE_CUPTI
-  // }
-  #endif
+  }
+  GmpProfiler::getInstance()->stopRangeProfiling();
   GmpProfiler::getInstance()->decodeCounterData();
-
   GmpProfiler::getInstance()->printProfilerRanges();
 
   double sum = std::accumulate(timings.begin(), timings.end(), 0.0);

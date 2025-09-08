@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include <stdlib.h>
+#include <cstring>
 // CUDA headers
 #include <cuda.h>
 #include <cuda_runtime.h>
@@ -231,12 +232,25 @@ void launch_add()
 
 int main(int argc, char** argv)
 {
-    assert(argc>2);
-    for(int i=2; i<argc; i++){
-        GmpProfiler::getInstance()->addMetrics(argv[i]);
+    std::string output_path = "";
+    assert(argc >= 2);
+    printf("argc: %d\n", argc);
+    for(int i = 2; i < argc; i++)
+    {
+        if(strcmp(argv[i], "-o") == 0){
+            printf("Setting output path: %s\n", argv[i + 1]);
+            assert(i + 1 < argc);
+            output_path = argv[i + 1];
+            i++;
+        }
+        else{
+            printf("Adding metric: %s\n", argv[i]);
+            GmpProfiler::getInstance()->addMetrics(argv[i]);
+        }  
     }
 
-    hello_kernel<<<1, 4>>>();
+
+    // hello_kernel<<<1, 4>>>();
     int curr_pass = 0;
     GmpProfiler::getInstance()->init();
 

@@ -4,12 +4,15 @@ set -euo pipefail
 # BIN="./build/llmcpp/train_gpt2_gpu"
 BIN="./llmcpp/helloworld"
 
-DEVICE_ID="0"
+OUTPUT_PATH="./output/result.csv"
+rm "${OUTPUT_PATH}" || true
+
+STEPS="0"
 
 run() {
   local -a metrics=("$@")
-  echo "==> ${BIN} ${DEVICE_ID} ${metrics[*]}"
-  "${BIN}" "${DEVICE_ID}" "${metrics[@]}"
+  echo "==> ${BIN} ${STEPS} ${metrics[*]}"
+  "${BIN}" "${STEPS}" "${metrics[@]}" "-o" "${OUTPUT_PATH}"
 }
 
 # -------------------------

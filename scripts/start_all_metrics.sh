@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# BIN="./build/llmcpp/train_gpt2_gpu"
-BIN="./llmcpp/helloworld"
+BIN="./build/llmcpp/train_gpt2_gpu"
+# BIN="./llmcpp/helloworld"
 
 OUTPUT_PATH="./output/result.csv"
 rm "${OUTPUT_PATH}" || true
 
-STEPS="0"
+STEPS="1"
 
 run() {
   local -a metrics=("$@")
@@ -49,8 +49,10 @@ grp2_sub4=(
   "smsp__sass_inst_executed_op_shared_st.sum"
   "smsp__sass_inst_executed_op_global_ld.sum"
   "smsp__sass_inst_executed_op_global_st.sum"
+  "smsp__sass_inst_executed_op_ldgsts.sum"
   "smsp__sass_data_bytes_mem_global_op_ld.sum"
   "smsp__sass_data_bytes_mem_global_op_st.sum"
+  
 )
 run "${grp2_sub4[@]}"
 
@@ -59,8 +61,6 @@ run "${grp2_sub4[@]}"
 grp2_sub2=(
   "sm__pipe_alu_cycles_active.max"
   "sm__pipe_fma_cycles_active.max"
-  "sm__pipe_tensor_cycles_active.max"
-  "sm__pipe_shared_cycles_active.max"
 )
 run "${grp2_sub2[@]}"
 
@@ -77,6 +77,14 @@ grp2_sub4=(
   "sm__warps_active.sum"
 )
 run "${grp2_sub4[@]}"
+
+
+# Group 2 — Sub Group 5
+grp2_sub5=(
+  "sm__pipe_tensor_cycles_active.max"
+  "sm__pipe_shared_cycles_active.max"
+)
+run "${grp2_sub5[@]}"
 
 # -------------------------
 # Group 3 — Sub Group 1

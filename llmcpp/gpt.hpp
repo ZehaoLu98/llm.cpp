@@ -796,8 +796,12 @@ namespace gpt
         Type *y = block_y_->data<Type>() + l * BTC;
         auto block_x_3d = MakeConst3DTensor(x, B, T, C);
         auto block_y_3d = Make3DTensor(y, B, T, C);
-
-        block->Forward(block_x_3d, block_y_3d);
+        if(l==1){
+          GMP_TIMED("Block Forward", block->Forward(block_x_3d, block_y_3d));
+        }
+        else{
+          block->Forward(block_x_3d, block_y_3d);
+        }
       }
 
       auto block_out_2d =
@@ -1032,7 +1036,12 @@ namespace gpt
         auto block_x_3d = MakeConst3DTensor(x, B, T, C);
         auto block_x_grad_3d = Make3DTensor(x_grad, B, T, C);
         auto block_y_grad_3d = MakeConst3DTensor(y_grad, B, T, C);
-        block->Backward(block_x_3d, block_y_grad_3d, block_x_grad_3d);
+        if(l == n_layer_-2){
+          GMP_TIMED("Backward Block", block->Backward(block_x_3d, block_y_grad_3d, block_x_grad_3d));
+        }
+        else{
+          block->Backward(block_x_3d, block_y_grad_3d, block_x_grad_3d);
+        }
       }
 
       // backward tok_emb, pos_emb

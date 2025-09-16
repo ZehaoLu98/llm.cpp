@@ -224,9 +224,9 @@ int main(int argc, char **argv)
                           sizeof(float) * B * T * V, cudaMemcpyHostToDevice));
     auto label_3d = d_label.const_tensor_3d<float>(B, T, V);
     auto logit_3d = d_logit.tensor_3d<float>(B, T, V);
-    model.gpt2_->ForwardGPU(idx, label_3d, logit_3d, &loss);
+    GMP_TIMED("Total Forward Time", model.gpt2_->ForwardGPU(idx, label_3d, logit_3d, &loss));
     optimizer.ZeroGrad();
-    model.gpt2_->BackwardGPU(idx);
+    GMP_TIMED("Total Backward Time", model.gpt2_->BackwardGPU(idx));
     optimizer.Step(step + 1);
     clock_gettime(CLOCK_MONOTONIC, &end);
     double time_elapsed_s =

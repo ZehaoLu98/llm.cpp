@@ -242,6 +242,7 @@ int main(int argc, char **argv)
   GmpProfiler::getInstance()->stopRangeProfiling();
   GmpProfiler::getInstance()->decodeCounterData();
   GmpProfiler::getInstance()->printProfilerRanges();
+  GmpProfiler::getInstance()->printMemoryActivity();
 
   double sum = std::accumulate(timings.begin(), timings.end(), 0.0);
   if (!timings.empty())

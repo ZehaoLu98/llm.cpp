@@ -48,13 +48,13 @@ run "${grp1[@]}"
 # -------------------------
 # Group 2 — Sub Group 1
 # -------------------------
-# grp2=(
-#   "gpu__compute_memory_request_throughput.avg.pct_of_peak_sustained_elapsed"
-#   "gpu__compute_memory_throughput.avg.pct_of_peak_sustained_elapsed"
-#   "gpu__dram_throughput.avg.pct_of_peak_sustained_elapsed"
-#   "dram__throughput.avg.pct_of_peak_sustained_elapsed"
-# )
-# run "${grp2[@]}"
+grp2=(
+  # "gpu__compute_memory_request_throughput.avg.pct_of_peak_sustained_elapsed"
+  # "gpu__compute_memory_throughput.avg.pct_of_peak_sustained_elapsed"
+  # "gpu__dram_throughput.avg.pct_of_peak_sustained_elapsed"
+  "dram__throughput.avg.pct_of_peak_sustained_elapsed"
+)
+run "${grp2[@]}" mean
 
 grp2_sub1=(
   "smsp__inst_executed.sum"
@@ -108,24 +108,19 @@ run "${grp2_sub5[@]}"
 # Group 3 — Sub Group 1
 # -------------------------
 grp3_sub1=(
-  "l1tex__t_requests_pipe_lsu_mem_global_op_ld.sum"
 )
 run "${grp3_sub1[@]}"
 
-# Group 3 — Sub Group 2
-grp3_sub2=(
-  "l1tex__t_sectors_pipe_lsu_mem_global_op_ld.sum"
-)
-run "${grp3_sub2[@]}"
-
 # Group 3 — Sub Group 3
 grp3_sub3=(
+  "l1tex__t_requests_pipe_lsu_mem_global_op_ld.sum"
   "l1tex__t_requests_pipe_lsu_mem_global_op_st.sum"
 )
 run "${grp3_sub3[@]}"
 
 # Group 3 — Sub Group 4
 grp3_sub4=(
+  "l1tex__t_sectors_pipe_lsu_mem_global_op_ld.sum"
   "l1tex__t_sectors_pipe_lsu_mem_global_op_st.sum"
 )
 run "${grp3_sub4[@]}"

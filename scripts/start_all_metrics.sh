@@ -10,9 +10,27 @@ rm "${OUTPUT_PATH}" || true
 STEPS="1"
 
 run() {
-  local -a metrics=("$@")
-  echo "==> ${BIN} ${STEPS} ${metrics[*]}"
-  "${BIN}" "${STEPS}" "${metrics[@]}" "-o" "${OUTPUT_PATH}"
+  local option=""
+  local -a metrics=()
+  
+  # Parse arguments to check for --max or --mean option
+  for arg in "$@"; do
+    if [[ "$arg" == "max" ]]; then
+      option="--max"
+    elif [[ "$arg" == "mean" ]]; then
+      option="--mean"
+    else
+      metrics+=("$arg")
+    fi
+  done
+  
+  if [[ -n "$option" ]]; then
+    echo "==> ${BIN} ${STEPS} ${metrics[*]} ${option}"
+    "${BIN}" "${STEPS}" "${metrics[@]}" "${option}" "-o" "${OUTPUT_PATH}"
+  else
+    echo "==> ${BIN} ${STEPS} ${metrics[*]}"
+    "${BIN}" "${STEPS}" "${metrics[@]}" "-o" "${OUTPUT_PATH}"
+  fi
 }
 
 # -------------------------
@@ -27,17 +45,17 @@ grp1=(
 )
 run "${grp1[@]}"
 
-grp2=(
-  "gpu__compute_memory_request_throughput"
-  "gpu__compute_memory_throughput"
-  "gpu__dram_throughput"
-  "dram__throughput"
-  
-)
-
 # -------------------------
 # Group 2 — Sub Group 1
 # -------------------------
+# grp2=(
+#   "gpu__compute_memory_request_throughput.avg.pct_of_peak_sustained_elapsed"
+#   "gpu__compute_memory_throughput.avg.pct_of_peak_sustained_elapsed"
+#   "gpu__dram_throughput.avg.pct_of_peak_sustained_elapsed"
+#   "dram__throughput.avg.pct_of_peak_sustained_elapsed"
+# )
+# run "${grp2[@]}"
+
 grp2_sub1=(
   "smsp__inst_executed.sum"
 )
@@ -133,6 +151,8 @@ run "${grp3_sub6[@]}"
 grp3_sub7=(
   "lts__t_requests_srcunit_l1_op_read.sum"
   "lts__t_requests_srcunit_l1_op_write.sum"
+  "lts__t_sectors_op_read.sum"
+  "lts__t_sectors_op_write.sum"
 )
 run "${grp3_sub7[@]}"
 
@@ -142,20 +162,20 @@ run "${grp3_sub7[@]}"
 grp4_sub1=(
   "smsp__average_warp_latency_per_inst_issued.ratio"
 )
-run "${grp4_sub1[@]}"
+run "${grp4_sub1[@]}" max
 
 # Group 4 — Sub Group 2
 grp4_sub2=(
   "smsp__average_warps_issue_stalled_math_pipe_throttle_per_issue_active.ratio"
   "smsp__average_warps_issue_stalled_wait_per_issue_active.ratio"
 )
-run "${grp4_sub2[@]}"
+run "${grp4_sub2[@]}" max
 
 # Group 4 — Sub Group 3
 grp4_sub3=(
   "smsp__average_warps_issue_stalled_long_scoreboard_per_issue_active.ratio"
   "smsp__average_warps_issue_stalled_short_scoreboard_per_issue_active.ratio"
 )
-run "${grp4_sub3[@]}"
+run "${grp4_sub3[@]}" max
 
 echo "All metric batches completed."

@@ -1039,7 +1039,7 @@ namespace gpt
 #ifdef TRAINING_BACKWARD
       GmpProfiler::getInstance()->pushRange("LayerNorm_Final_Backward", GmpProfileType::CONCURRENT_KERNEL);
 #endif
-      GMP_TIMED("", lnf_->Backward(block_out_2d, lnf_y_grad_2d, lnf_mean, lnf_rstd,
+      GMP_TIMED("LayerNorm_Final_Backward", lnf_->Backward(block_out_2d, lnf_y_grad_2d, lnf_mean, lnf_rstd,
                      block_out_grad_2d););
 #ifdef TRAINING_BACKWARD
       GmpProfiler::getInstance()->popRange("LayerNorm_Final_Backward", GmpProfileType::CONCURRENT_KERNEL);

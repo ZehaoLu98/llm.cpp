@@ -52,25 +52,38 @@ void cudaCheck(cudaError_t error, const char *file, int line)
 
 int main(int argc, char **argv)
 {
-  DRIVER_API_CALL(cuInit(0));
+  // DRIVER_API_CALL(cuInit(0));
 
-  int dev = 0;
+  // int dev = 0;
 
-  cudaSetDevice(dev); // pick device via runtime (makes primary ctx the one runtime will use)
-                      // OPTIONAL: cudaSetDeviceFlags(...) before creation
-  cudaFree(0);        // force creation of the primary context now
+  // cudaSetDevice(dev); // pick device via runtime (makes primary ctx the one runtime will use)
+  //                     // OPTIONAL: cudaSetDeviceFlags(...) before creation
+  // cudaFree(0);        // force creation of the primary context now
 
   gpt2::GPT2 model;
   int num_steps = argc > 1 ? atoi(argv[1]) : 40;
-  std::string output_path = "";
+  std::string outputPath = "";
+  GmpOutputKernelReduction outputOption = GmpOutputKernelReduction::SUM;
   assert(argc >= 2);
   for(int i = 2; i < argc; i++)
   {
       if(strcmp(argv[i], "-o") == 0){
           printf("Setting output path: %s\n", argv[i + 1]);
           assert(i + 1 < argc);
-          output_path = argv[i + 1];
+          outputPath = argv[i + 1];
           i++;
+      }
+      else if(strcmp(argv[i], "--max") == 0){
+          outputOption = GmpOutputKernelReduction::MAX;
+          printf("Setting output option to MAX\n");
+      }
+      else if(strcmp(argv[i], "--mean") == 0){
+          outputOption = GmpOutputKernelReduction::MEAN;
+          printf("Setting output option to MEAN\n");
+      }
+      else if(strcmp(argv[i], "--sum") == 0){
+          outputOption = GmpOutputKernelReduction::SUM;
+          printf("Setting output option to SUM\n");
       }
       else{
           printf("Adding metric: %s\n", argv[i]);
@@ -241,7 +254,7 @@ int main(int argc, char **argv)
   }
   GmpProfiler::getInstance()->stopRangeProfiling();
   GmpProfiler::getInstance()->decodeCounterData();
-  GmpProfiler::getInstance()->printProfilerRanges();
+  GmpProfiler::getInstance()->printProfilerRanges(outputOption);
   GmpProfiler::getInstance()->printMemoryActivity();
 
   double sum = std::accumulate(timings.begin(), timings.end(), 0.0);

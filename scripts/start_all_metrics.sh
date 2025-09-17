@@ -107,9 +107,6 @@ run "${grp2_sub5[@]}"
 # -------------------------
 # Group 3 — Sub Group 1
 # -------------------------
-grp3_sub1=(
-)
-run "${grp3_sub1[@]}"
 
 # Group 3 — Sub Group 3
 grp3_sub3=(

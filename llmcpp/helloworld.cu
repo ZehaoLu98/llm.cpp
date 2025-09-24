@@ -9,7 +9,18 @@
 #include <iomanip>
 #include <cassert>
 #include "gmp/profile.h"
-
+#include <thrust/execution_policy.h>
+#include <thrust/iterator/counting_iterator.h>
+#include <thrust/iterator/transform_iterator.h>
+#include <thrust/fill.h>
+#include <thrust/transform.h>
+#include <thrust/host_vector.h>
+#include <thrust/device_vector.h>
+#include <cub/device/device_for.cuh>
+#include <cub/iterator/cache_modified_input_iterator.cuh>
+#include <cub/iterator/cache_modified_output_iterator.cuh>
+#include <cuda/std/mdspan>
+#include <cuda/atomic>
 // #define CUPTI_CALL(call)                                                         \
 //     do                                                                           \
 //     {                                                                            \
@@ -35,6 +46,12 @@ __global__ void vecAdd(const float *A, const float *B, float *C, int numElements
     int i = blockDim.x * blockIdx.x + threadIdx.x;
     if (i < numElements)
         C[i] = A[i] + B[i];
+}
+
+void vecAdd_thrust(float* out, float* inp1, float* inp2, int N) {
+    cub::CacheModifiedInputIterator<cub::LOAD_CS, float> inp1cs(inp1);
+    cub::CacheModifiedInputIterator<cub::LOAD_CS, float> inp2cs(inp2);
+    thrust::transform(thrust::cuda::par_nosync, inp1cs, inp1cs + N, inp2cs, out, thrust::plus<float>());
 }
 
 __global__ void multiply(const float *A, const float *B, float *C, int numElements)
@@ -127,8 +144,8 @@ __global__ void sumReduction(float *input, float *output, int N)
         output[blockIdx.x] = sdata[0];
 }
 
-#define N 13824*4*1024*16 // vector length, 3.456GB
-
+// #define N 13824*4*1024*16 // vector length, 3.456GB
+#define N (4*128*768)
 void launch_add()
 {
     size_t size = N * sizeof(float);
@@ -179,6 +196,13 @@ void launch_add()
     // cudaMemcpy(d_C_4, h_C, size, cudaMemcpyHostToDevice);
 
     cudaDeviceSynchronize();
+
+    GmpProfiler::getInstance()->pushRange("vecadd", GmpProfileType::CONCURRENT_KERNEL);
+    vecAdd<<<6144, 256>>>(d_A_1, d_B_1, d_C_1, N);
+    GmpProfiler::getInstance()->popRange("vecadd", GmpProfileType::CONCURRENT_KERNEL);
+    GmpProfiler::getInstance()->pushRange("vecadd_thrust", GmpProfileType::CONCURRENT_KERNEL);
+    vecAdd_thrust(d_A_2, d_B_2, d_C_2, N);
+    GmpProfiler::getInstance()->popRange("vecadd_thrust", GmpProfileType::CONCURRENT_KERNEL);
 
     // 3 sets of tests for GMP
 
@@ -232,22 +256,35 @@ void launch_add()
 
 int main(int argc, char** argv)
 {
-    std::string output_path = "";
-    assert(argc >= 2);
-    printf("argc: %d\n", argc);
-    for(int i = 2; i < argc; i++)
-    {
-        if(strcmp(argv[i], "-o") == 0){
-            printf("Setting output path: %s\n", argv[i + 1]);
-            assert(i + 1 < argc);
-            output_path = argv[i + 1];
-            i++;
-        }
-        else{
-            printf("Adding metric: %s\n", argv[i]);
-            GmpProfiler::getInstance()->addMetrics(argv[i]);
-        }  
-    }
+  std::string outputPath = "";
+  GmpOutputKernelReduction outputOption = GmpOutputKernelReduction::SUM;
+  assert(argc >= 2);
+  for(int i = 2; i < argc; i++)
+  {
+      if(strcmp(argv[i], "-o") == 0){
+          printf("Setting output path: %s\n", argv[i + 1]);
+          assert(i + 1 < argc);
+          outputPath = argv[i + 1];
+          i++;
+      }
+      else if(strcmp(argv[i], "--max") == 0){
+          outputOption = GmpOutputKernelReduction::MAX;
+          printf("Setting output option to MAX\n");
+      }
+      else if(strcmp(argv[i], "--mean") == 0){
+          outputOption = GmpOutputKernelReduction::MEAN;
+          printf("Setting output option to MEAN\n");
+      }
+      else if(strcmp(argv[i], "--sum") == 0){
+          outputOption = GmpOutputKernelReduction::SUM;
+          printf("Setting output option to SUM\n");
+      }
+      else{
+          printf("Adding metric: %s\n", argv[i]);
+          GmpProfiler::getInstance()->addMetrics(argv[i]);
+      }  
+  }
+
 
 
     // hello_kernel<<<1, 4>>>();
@@ -262,8 +299,8 @@ int main(int argc, char** argv)
 
     cudaDeviceSynchronize();
     GmpProfiler::getInstance()->decodeCounterData();
-    GmpProfiler::getInstance()->printProfilerRanges();
-
+    GmpProfiler::getInstance()->printProfilerRanges(outputOption);
+    GmpProfiler::getInstance()->produceOutput(outputOption);
 
     CUPTI_CALL(cuptiActivityDisable(CUPTI_ACTIVITY_KIND_CONCURRENT_KERNEL));
 

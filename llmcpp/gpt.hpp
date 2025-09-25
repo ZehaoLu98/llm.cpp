@@ -12,8 +12,8 @@
 #define PROFILE_TRACE_FN(prefix)
 #endif
 
-// #define TRAINING_FORWARD
-#define TRAINING_BACKWARD
+#define TRAINING_FORWARD
+// #define TRAINING_BACKWARD
 
 namespace gpt
 {
@@ -459,10 +459,6 @@ namespace gpt
       CHECK_EQ(T, y.dimension(1));
       CHECK_EQ(C, y.dimension(2));
 
-#ifdef TRAINING_FORWARD
-      if (counter == 1)
-        GmpProfiler::getInstance()->pushRange("allocation", GmpProfileType::MEMORY);
-#endif
       ln1_y_->LazyAllocate(B * T * C);
       ln1_mean_->LazyAllocate(B * T);
       ln1_rstd_->LazyAllocate(B * T);
@@ -472,10 +468,6 @@ namespace gpt
       ln2_mean_->LazyAllocate(B * T);
       ln2_rstd_->LazyAllocate(B * T);
       mlp_y_->LazyAllocate(B * T * C);
-#ifdef TRAINING_FORWARD
-      if (counter == 1)
-        GmpProfiler::getInstance()->popRange("allocation", GmpProfileType::MEMORY);
-#endif
 
       // LN1
       auto x_2d = MakeConstMatrix(x.data(), B * T, C);
@@ -762,6 +754,7 @@ namespace gpt
 
     void __Forward(typename TTypes<int>::ConstMatrix idx)
     {
+      static int counter = 0;
       PROFILE_TRACE_FN("GPT");
 
       const int B = idx.dimension(0), T = idx.dimension(1), C = n_embed_,
@@ -782,18 +775,28 @@ namespace gpt
       lnf_y_->LazyAllocate(BT * C);
       lnf_mean_->LazyAllocate(BT);
       lnf_rstd_->LazyAllocate(BT);
-      wte_->Forward(idx, absl::MakeSpan(tok_emb_->data<Type>(), tok_emb_->size()));
-      wpe_->Forward(pos, absl::MakeSpan(pos_emb_->data<Type>(), pos_emb_->size()));
 
-      auto tok_emb = tok_emb_->matrix<Type>(B, TC);
-      auto pos_emb = pos_emb_->flat<Type>();
-      auto encoded = encoded_->matrix<Type>(B, TC);
+
       Eigen::array<Eigen::Index, 2> batch_by_one = {B, 1};
       Eigen::array<Eigen::Index, 2> one_by_class = {1, TC};
+    #ifdef TRAINING_FORWARD
+      if (counter == 1)
       GmpProfiler::getInstance()->pushRange("Embedding_Addition", GmpProfileType::CONCURRENT_KERNEL);
-      GMP_TIMED("Embedding_Addition", encoded.device(nn::g_device) =
-          tok_emb + pos_emb.reshape(one_by_class).broadcast(batch_by_one));
+    #endif
+      GMP_TIMED("Embedding_Addition", 
+      {
+          wte_->Forward(idx, absl::MakeSpan(tok_emb_->data<Type>(), tok_emb_->size()));
+          wpe_->Forward(pos, absl::MakeSpan(pos_emb_->data<Type>(), pos_emb_->size()));
+          auto tok_emb = tok_emb_->matrix<Type>(B, TC);
+          auto pos_emb = pos_emb_->flat<Type>();
+          auto encoded = encoded_->matrix<Type>(B, TC);
+          encoded.device(nn::g_device) =
+          tok_emb + pos_emb.reshape(one_by_class).broadcast(batch_by_one);
+      });
+    #ifdef TRAINING_FORWARD
+      if (counter == 1)
       GmpProfiler::getInstance()->popRange("Embedding_Addition", GmpProfileType::CONCURRENT_KERNEL);
+    #endif
       for (int l = 0; l < n_layer_; ++l)
       {
         const auto &block = h_[l];
@@ -818,6 +821,8 @@ namespace gpt
       GmpProfiler::getInstance()->pushRange("LayerNorm_Final", GmpProfileType::CONCURRENT_KERNEL);
       GMP_TIMED("LayerNorm_Final", lnf_->Forward(block_out_2d, lnf_y, lnf_mean, lnf_rstd));
       GmpProfiler::getInstance()->popRange("LayerNorm_Final", GmpProfileType::CONCURRENT_KERNEL);
+
+      counter++;
     }
 
     void Forward(typename TTypes<int>::ConstMatrix idx,

@@ -15,6 +15,9 @@
 #define TRAINING_FORWARD
 // #define TRAINING_BACKWARD
 
+extern int curr_step;
+int curr_fwd_block = 0;
+
 namespace gpt
 {
 
@@ -448,7 +451,6 @@ namespace gpt
     void Forward(typename TTypes<Type, 3>::ConstTensor x,
                  typename TTypes<Type, 3>::Tensor y)
     {
-      static int counter = 0;
       PROFILE_TRACE_FN("Block");
 
       // x: [B, T, C], y: [B, T, C]
@@ -475,38 +477,38 @@ namespace gpt
       auto ln1_mean_1d = MakeFlat(ln1_mean_->data<Type>(), B * T);
       auto ln1_rstd_1d = MakeFlat(ln1_rstd_->data<Type>(), B * T);
 #ifdef TRAINING_FORWARD
-      if (counter == 1)
-        GmpProfiler::getInstance()->pushRange("LN1_" + std::to_string(counter), GmpProfileType::CONCURRENT_KERNEL);
+      if(curr_step == 1 && curr_fwd_block == 1)
+        GmpProfiler::getInstance()->pushRange("LN1_" + std::to_string(curr_fwd_block), GmpProfileType::CONCURRENT_KERNEL);
 #endif
       GMP_TIMED("LN1", ln1_->Forward(x_2d, ln1_y_2d, ln1_mean_1d, ln1_rstd_1d));
 #ifdef TRAINING_FORWARD
-      if (counter == 1)
-        GmpProfiler::getInstance()->popRange("LN1_" + std::to_string(counter), GmpProfileType::CONCURRENT_KERNEL);
+      if(curr_step == 1 && curr_fwd_block == 1)
+        GmpProfiler::getInstance()->popRange("LN1_" + std::to_string(curr_fwd_block), GmpProfileType::CONCURRENT_KERNEL);
 #endif
       // Attention
       auto ln1_y_3d = MakeConst3DTensor(ln1_y_2d.data(), B, T, C);
       auto att_y_3d = Make3DTensor(att_y_->data<Type>(), B, T, C);
 #ifdef TRAINING_FORWARD
-      if (counter == 1)
-        GmpProfiler::getInstance()->pushRange("Attention_" + std::to_string(counter), GmpProfileType::CONCURRENT_KERNEL);
+      if(curr_step == 1 && curr_fwd_block == 1)
+        GmpProfiler::getInstance()->pushRange("Attention_" + std::to_string(curr_fwd_block), GmpProfileType::CONCURRENT_KERNEL);
 #endif
       GMP_TIMED("Attention", attn_->Forward(ln1_y_3d, att_y_3d));
 #ifdef TRAINING_FORWARD
-      if (counter == 1)
-        GmpProfiler::getInstance()->popRange("Attention_" + std::to_string(counter), GmpProfileType::CONCURRENT_KERNEL);
+      if(curr_step == 1 && curr_fwd_block == 1)
+        GmpProfiler::getInstance()->popRange("Attention_" + std::to_string(curr_fwd_block), GmpProfileType::CONCURRENT_KERNEL);
 #endif
       // Residual
       auto x_1d = MakeConstFlat(x.data(), B * T * C);
       auto att_y_1d = MakeConstFlat(att_y_->data<Type>(), B * T * C);
       auto residual1_1d = MakeFlat(residual1_->data<Type>(), residual1_->size());
 #ifdef TRAINING_FORWARD
-      if (counter == 1)
-        GmpProfiler::getInstance()->pushRange("Residual_" + std::to_string(counter), GmpProfileType::CONCURRENT_KERNEL);
+      if(curr_step == 1 && curr_fwd_block == 1)
+        GmpProfiler::getInstance()->pushRange("Residual_" + std::to_string(curr_fwd_block), GmpProfileType::CONCURRENT_KERNEL);
 #endif
       GMP_TIMED("Residual", nn::Residual::Forward(x_1d, att_y_1d, residual1_1d));
 #ifdef TRAINING_FORWARD
-      if (counter == 1)
-        GmpProfiler::getInstance()->popRange("Residual_" + std::to_string(counter), GmpProfileType::CONCURRENT_KERNEL);
+      if(curr_step == 1 && curr_fwd_block == 1)
+        GmpProfiler::getInstance()->popRange("Residual_" + std::to_string(curr_fwd_block), GmpProfileType::CONCURRENT_KERNEL);
 #endif
       // LN2
       auto ln2_y_2d = MakeMatrix(ln2_y_->data<Type>(), B * T, C);
@@ -515,24 +517,24 @@ namespace gpt
       auto ln2_rstd_1d = MakeFlat(ln2_rstd_->data<Type>(), B * T);
       auto residual1_2d = MakeConstMatrix(residual1_->data<Type>(), B * T, C);
 #ifdef TRAINING_FORWARD
-      if (counter == 1)
-        GmpProfiler::getInstance()->pushRange("LN2_" + std::to_string(counter), GmpProfileType::CONCURRENT_KERNEL);
+      if(curr_step == 1 && curr_fwd_block == 1)
+        GmpProfiler::getInstance()->pushRange("LN2_" + std::to_string(curr_fwd_block), GmpProfileType::CONCURRENT_KERNEL);
 #endif
       GMP_TIMED("LN2", ln2_->Forward(residual1_2d, ln2_y_2d, ln2_mean_1d, ln2_rstd_1d));
 #ifdef TRAINING_FORWARD
-      if (counter == 1)
-        GmpProfiler::getInstance()->popRange("LN2_" + std::to_string(counter), GmpProfileType::CONCURRENT_KERNEL);
+      if(curr_step == 1 && curr_fwd_block == 1)
+        GmpProfiler::getInstance()->popRange("LN2_" + std::to_string(curr_fwd_block), GmpProfileType::CONCURRENT_KERNEL);
 #endif
       // MLP
       auto mlp_y_2d = MakeMatrix(mlp_y_->data<Type>(), B * T, C);
 #ifdef TRAINING_FORWARD
-      if (counter == 1)
-        GmpProfiler::getInstance()->pushRange("MLP_" + std::to_string(counter), GmpProfileType::CONCURRENT_KERNEL);
+      if(curr_step == 1 && curr_fwd_block == 1)
+        GmpProfiler::getInstance()->pushRange("MLP_" + std::to_string(curr_fwd_block), GmpProfileType::CONCURRENT_KERNEL);
 #endif
       GMP_TIMED("MLP", mlp_->Forward(ln2_y_2d_const, mlp_y_2d));
 #ifdef TRAINING_FORWARD
-      if (counter == 1)
-        GmpProfiler::getInstance()->popRange("MLP_" + std::to_string(counter), GmpProfileType::CONCURRENT_KERNEL);
+      if(curr_step == 1 && curr_fwd_block == 1)
+        GmpProfiler::getInstance()->popRange("MLP_" + std::to_string(curr_fwd_block), GmpProfileType::CONCURRENT_KERNEL);
 #endif
       // Residual
       auto residual1_1d_const =
@@ -540,15 +542,14 @@ namespace gpt
       auto mlp_y_1d = MakeConstFlat(mlp_y_->data<Type>(), B * T * C);
       auto y_1d = MakeFlat(y.data(), y.size());
 #ifdef TRAINING_FORWARD
-      if (counter == 1)
-        GmpProfiler::getInstance()->pushRange("Residual2_" + std::to_string(counter), GmpProfileType::CONCURRENT_KERNEL);
+      if(curr_step == 1 && curr_fwd_block == 1)
+        GmpProfiler::getInstance()->pushRange("Residual2_" + std::to_string(curr_fwd_block), GmpProfileType::CONCURRENT_KERNEL);
 #endif
       GMP_TIMED("Residual2", nn::Residual::Forward(residual1_1d_const, mlp_y_1d, y_1d));
 #ifdef TRAINING_FORWARD
-      if (counter == 1)
-        GmpProfiler::getInstance()->popRange("Residual2_" + std::to_string(counter), GmpProfileType::CONCURRENT_KERNEL);
+      if(curr_step == 1 && curr_fwd_block == 1)
+        GmpProfiler::getInstance()->popRange("Residual2_" + std::to_string(curr_fwd_block), GmpProfileType::CONCURRENT_KERNEL);
 #endif
-      counter++;
     }
 
     void Backward(typename TTypes<Type, 3>::ConstTensor x,
@@ -780,7 +781,7 @@ namespace gpt
       Eigen::array<Eigen::Index, 2> batch_by_one = {B, 1};
       Eigen::array<Eigen::Index, 2> one_by_class = {1, TC};
     #ifdef TRAINING_FORWARD
-      if (counter == 1)
+      if(curr_step == 1)
       GmpProfiler::getInstance()->pushRange("Embedding_Addition", GmpProfileType::CONCURRENT_KERNEL);
     #endif
       GMP_TIMED("Embedding_Addition", 
@@ -794,11 +795,12 @@ namespace gpt
           tok_emb + pos_emb.reshape(one_by_class).broadcast(batch_by_one);
       });
     #ifdef TRAINING_FORWARD
-      if (counter == 1)
+      if(curr_step == 1)
       GmpProfiler::getInstance()->popRange("Embedding_Addition", GmpProfileType::CONCURRENT_KERNEL);
     #endif
       for (int l = 0; l < n_layer_; ++l)
       {
+        curr_fwd_block = l;
         const auto &block = h_[l];
         Type *x = l == 0 ? encoded_->data<Type>()
                          : block_y_->data<Type>() + (l - 1) * BTC;
@@ -818,11 +820,13 @@ namespace gpt
       auto lnf_y = MakeMatrix(lnf_y_->data<Type>(), BT, C);
       auto lnf_mean = MakeFlat(lnf_mean_->data<Type>(), BT);
       auto lnf_rstd = MakeFlat(lnf_rstd_->data<Type>(), BT);
-      GmpProfiler::getInstance()->pushRange("LayerNorm_Final", GmpProfileType::CONCURRENT_KERNEL);
+      #ifdef TRAINING_FORWARD
+      if(curr_step == 1)GmpProfiler::getInstance()->pushRange("LayerNorm_Final", GmpProfileType::CONCURRENT_KERNEL);
+      #endif
       GMP_TIMED("LayerNorm_Final", lnf_->Forward(block_out_2d, lnf_y, lnf_mean, lnf_rstd));
-      GmpProfiler::getInstance()->popRange("LayerNorm_Final", GmpProfileType::CONCURRENT_KERNEL);
-
-      counter++;
+      #ifdef TRAINING_FORWARD
+      if(curr_step == 1)GmpProfiler::getInstance()->popRange("LayerNorm_Final", GmpProfileType::CONCURRENT_KERNEL);
+      #endif
     }
 
     void Forward(typename TTypes<int>::ConstMatrix idx,
@@ -953,7 +957,14 @@ namespace gpt
       // [BT, C] x [C, vocab_size] -> [BT, vocab_size]
       Eigen::array<Eigen::IndexPair<int>, 1> product_dims = {
           Eigen::IndexPair<int>(1, 1)};
-      logits_2d.device(nn::g_device) = lnf_y.contract(lm_head, product_dims);
+
+      #ifdef TRAINING_FORWARD
+      if(curr_step == 1)GmpProfiler::getInstance()->pushRange("LM_Head_Forward", GmpProfileType::CONCURRENT_KERNEL);
+      #endif
+      GMP_TIMED("LM_Head_Forward", logits_2d.device(nn::g_device) = lnf_y.contract(lm_head, product_dims););
+      #ifdef TRAINING_FORWARD
+      if(curr_step == 1)GmpProfiler::getInstance()->popRange("LM_Head_Forward", GmpProfileType::CONCURRENT_KERNEL);
+      #endif
 
       auto logits_2d_const = MakeConstMatrix(logits.data(), BT, vocab_size_);
       auto labels_2d_const = MakeConstMatrix(labels.data(), BT, vocab_size_);

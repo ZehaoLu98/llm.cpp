@@ -9,6 +9,8 @@
 #include "optim.hpp"
 #include "gmp/profile.h"
 
+int curr_step = 0;
+
 unsigned int random_u32(unsigned long long *state)
 {
   // xorshift rng: https://en.wikipedia.org/wiki/Xorshift#xorshift.2A
@@ -146,6 +148,7 @@ int main(int argc, char **argv)
   GmpProfiler::getInstance()->startRangeProfiling();
   for (int step = 0; step <= num_steps; step++)
   {
+    curr_step = step;
     printf("step %d\n", step);
     // NvtxRange step_range("Train step", step);
 

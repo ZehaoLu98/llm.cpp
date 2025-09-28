@@ -965,7 +965,13 @@ namespace gpt
 
       auto logits_2d_const = MakeConstMatrix(logits.data(), BT, vocab_size_);
       auto labels_2d_const = MakeConstMatrix(labels.data(), BT, vocab_size_);
-      SoftmaxForwardGPU(logits_2d_const, labels_2d_const, loss);
+      #ifdef TRAINING_FORWARD
+      if(curr_step == 1)GmpProfiler::getInstance()->pushRange("Softmax_Cross_Entropy_Forward", GmpProfileType::CONCURRENT_KERNEL);
+      #endif
+      GMP_TIMED("Softmax_Cross_Entropy_Forward", SoftmaxForwardGPU(logits_2d_const, labels_2d_const, loss););
+      #ifdef TRAINING_FORWARD
+      if(curr_step == 1)GmpProfiler::getInstance()->popRange("Softmax_Cross_Entropy_Forward", GmpProfileType::CONCURRENT_KERNEL);
+      #endif
     }
 
     void SoftmaxBackwardCPU(absl::Span<const int> targets)

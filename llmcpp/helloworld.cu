@@ -197,19 +197,19 @@ void launch_add()
 
     cudaDeviceSynchronize();
 
-    GmpProfiler::getInstance()->pushRange("vecadd", GmpProfileType::CONCURRENT_KERNEL);
-    vecAdd<<<6144, 256>>>(d_A_1, d_B_1, d_C_1, N);
-    GmpProfiler::getInstance()->popRange("vecadd", GmpProfileType::CONCURRENT_KERNEL);
-    GmpProfiler::getInstance()->pushRange("vecadd_thrust", GmpProfileType::CONCURRENT_KERNEL);
-    vecAdd_thrust(d_A_2, d_B_2, d_C_2, N);
-    GmpProfiler::getInstance()->popRange("vecadd_thrust", GmpProfileType::CONCURRENT_KERNEL);
+    // GmpProfiler::getInstance()->pushRange("vecadd", GmpProfileType::CONCURRENT_KERNEL);
+    // vecAdd<<<6144, 256>>>(d_A_1, d_B_1, d_C_1, N);
+    // GmpProfiler::getInstance()->popRange("vecadd", GmpProfileType::CONCURRENT_KERNEL);
+    // GmpProfiler::getInstance()->pushRange("vecadd_thrust", GmpProfileType::CONCURRENT_KERNEL);
+    // vecAdd_thrust(d_A_2, d_B_2, d_C_2, N);
+    // GmpProfiler::getInstance()->popRange("vecadd_thrust", GmpProfileType::CONCURRENT_KERNEL);
 
     // 3 sets of tests for GMP
 
     // Normal
-    // GmpProfiler::getInstance()->pushRange("saxpy1", GmpProfileType::CONCURRENT_KERNEL);
-    // saxpy<<<108, 128>>>(N, 2.0f, d_A_1, d_B_1);
-    // GmpProfiler::getInstance()->popRange("saxpy1", GmpProfileType::CONCURRENT_KERNEL);
+    GmpProfiler::getInstance()->pushRange("saxpy1", GmpProfileType::CONCURRENT_KERNEL);
+    GMP_TIMED("saxpy1", saxpy<<<108, 128>>>(N, 2.0f, d_A_1, d_B_1););
+    GmpProfiler::getInstance()->popRange("saxpy1", GmpProfileType::CONCURRENT_KERNEL);
     // GmpProfiler::getInstance()->pushRange("saxpy2", GmpProfileType::CONCURRENT_KERNEL);
     // saxpy<<<108, 128*2>>>(N, 2.0f, d_A_2, d_B_2);
     // GmpProfiler::getInstance()->popRange("saxpy2", GmpProfileType::CONCURRENT_KERNEL);

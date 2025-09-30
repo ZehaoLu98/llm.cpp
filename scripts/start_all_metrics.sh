@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-BIN="./build/llmcpp/train_gpt2_gpu"
-# BIN="./llmcpp/helloworld"
+# BIN="./build/llmcpp/train_gpt2_gpu"
+BIN="./llmcpp/helloworld"
 
 OUTPUT_PATH="./output/result.csv"
 rm "${OUTPUT_PATH}" || true
@@ -56,13 +56,18 @@ grp2=(
 )
 run "${grp2[@]}" mean
 
+grp2_sub6=(
+  "sm__throughput_tensor.avg.pct_of_peak_sustained_elapsed"
+)
+run "${grp2_sub6[@]}"
+
 grp2_sub1=(
   "smsp__inst_executed.sum"
 )
 run "${grp2_sub1[@]}"
 
 #Group 2 — Sub Group 4
-grp2_sub4=(
+grp2_sub7=(
   "smsp__sass_inst_executed_op_shared_ld.sum"
   "smsp__sass_inst_executed_op_shared_st.sum"
   "smsp__sass_inst_executed_op_global_ld.sum"
@@ -72,7 +77,7 @@ grp2_sub4=(
   "smsp__sass_data_bytes_mem_global_op_st.sum"
   
 )
-run "${grp2_sub4[@]}"
+run "${grp2_sub7[@]}"
 
 
 # Group 2 — Sub Group 2

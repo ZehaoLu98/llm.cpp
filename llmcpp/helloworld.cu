@@ -21,6 +21,11 @@
 #include <cub/iterator/cache_modified_output_iterator.cuh>
 #include <cuda/std/mdspan>
 #include <cuda/atomic>
+
+// #define N 13824*4*1024*16 // vector length, 3.456GB
+#define N (4*128*768)
+#define LARGE_N (4*128*768*32)
+
 // #define CUPTI_CALL(call)                                                         \
 //     do                                                                           \
 //     {                                                                            \
@@ -48,34 +53,21 @@ __global__ void vecAdd(const float *A, const float *B, float *C, int numElements
         C[i] = A[i] + B[i];
 }
 
-void vecAdd_thrust(float* out, float* inp1, float* inp2, int N) {
+void vecAdd_thrust(float* out, float* inp1, float* inp2, int n) {
     cub::CacheModifiedInputIterator<cub::LOAD_CS, float> inp1cs(inp1);
     cub::CacheModifiedInputIterator<cub::LOAD_CS, float> inp2cs(inp2);
-    thrust::transform(thrust::cuda::par_nosync, inp1cs, inp1cs + N, inp2cs, out, thrust::plus<float>());
+    thrust::transform(thrust::cuda::par_nosync, inp1cs, inp1cs + n, inp2cs, out, thrust::plus<float>());
 }
 
 __global__ void multiply(const float *A, const float *B, float *C, int numElements)
 {
-    int i = blockDim.x * blockIdx.x + threadIdx.x;
-    if (i < numElements)
+    for (int i =  blockDim.x * blockIdx.x + threadIdx.x; i < numElements; i += blockDim.x * gridDim.x)
         C[i] = A[i] * B[i];
 }
 
-__global__ void multiply_complex(float *A, float *B, float *C, int numElements)
+__global__ void square(float *A, int n)
 {
-    int i = blockDim.x * blockIdx.x + threadIdx.x;
-    if (i < numElements)
-    {
-        C[i] = A[i] * B[i];
-        A[i] = B[i] + C[i];
-        B[i] = A[i] * C[i];
-    }
-}
-
-__global__ void square(float *A, int N)
-{
-    int i = blockIdx.x * blockDim.x + threadIdx.x;
-    if (i < N)
+    for (int i = blockIdx.x * blockDim.x + threadIdx.x; i < n; i += blockDim.x * gridDim.x)
     {
         A[i] = A[i] * A[i];
     }
@@ -121,13 +113,13 @@ __global__ void saxpy_more_compute(int n, float a, float *x, float *y)
       }
 }
 
-__global__ void sumReduction(float *input, float *output, int N)
+__global__ void sumReduction(float *input, float *output, int n)
 {
     __shared__ float sdata[256]; // shared memory for partial sums
     int tid = threadIdx.x;
     int i = blockIdx.x * blockDim.x + threadIdx.x;
 
-    sdata[tid] = (i < N) ? input[i] : 0.0f;
+    sdata[tid] = (i < n) ? input[i] : 0.0f;
     __syncthreads();
 
     // reduce within block
@@ -144,11 +136,62 @@ __global__ void sumReduction(float *input, float *output, int N)
         output[blockIdx.x] = sdata[0];
 }
 
-// #define N 13824*4*1024*16 // vector length, 3.456GB
-#define N (4*128*768)
-void launch_add()
+// Test launch overhead by launching large number of kernels
+// The total wall clock is compared with the total gpu time reported by GMP.
+void testLaunchOverhead(float *d_A_1, float *d_B_1, float *d_A_2, float *d_B_2, float *d_C_2, float *d_A_3, float *d_B_3, float *d_C_3, float *d_A_4)
+{
+    GmpProfiler::getInstance()->pushRange("LaunchOverhead", GmpProfileType::CONCURRENT_KERNEL);
+    auto start = std::chrono::high_resolution_clock::now();
+    for (int i = 0; i < 110; i++)
+    {
+        saxpy<<<4, 256>>>(N, 2.0f, d_A_1, d_B_1);
+        multiply<<<4, 256>>>(d_A_3, d_B_3, d_C_3, N);
+        multiply<<<4, 256>>>(d_A_2, d_B_2, d_C_2, N);
+        square<<<4, 256>>>(d_A_4, N);
+    }
+    auto end = std::chrono::high_resolution_clock::now();
+    std::chrono::duration<double, std::nano> duration = end - start;
+    printf("Wall clock time for all kernel launches: %f ns\n",
+           duration.count());
+    GmpProfiler::getInstance()->popRange("LaunchOverhead", GmpProfileType::CONCURRENT_KERNEL);
+
+    GmpProfiler::getInstance()->pushRange("LaunchOverhead_SmallKernels", GmpProfileType::CONCURRENT_KERNEL);
+    start = std::chrono::high_resolution_clock::now();
+    for (int i = 0; i < 110; i++)
+    {
+        saxpy<<<1, 16>>>(N, 2.0f, d_A_1, d_B_1);
+        multiply<<<1, 16>>>(d_A_3, d_B_3, d_C_3, N);
+        multiply<<<1, 16>>>(d_A_2, d_B_2, d_C_2, N);
+        square<<<1, 16>>>(d_A_4, N);
+    }
+    end = std::chrono::high_resolution_clock::now();
+    duration = end - start;
+    printf("Wall clock time for all small kernel launches: %f ns\n",
+           duration.count());
+    GmpProfiler::getInstance()->popRange("LaunchOverhead_SmallKernels", GmpProfileType::CONCURRENT_KERNEL);
+}
+
+// This function reveals the bandwidth distribution among multiple kernels launched within a logical range.
+// The bandwidth reported by GMP has a high-low-high pattern.
+void testBandwidthDist(float *d_A_5, float *d_B_5, float *d_C_5)
+{
+    GmpProfiler::getInstance()->pushRange("BandwidthDist", GmpProfileType::CONCURRENT_KERNEL);
+    for(int i = 0; i<20;i++){
+        // Typical workflow in a range
+        // Each kernel accept the ouput of previous kernel as input.
+        saxpy<<<108, 128>>>(N, 2.0f, d_A_5, d_B_5);
+        multiply<<<108, 128>>>(d_A_5, d_B_5, d_C_5, N);
+        multiply<<<108, 128>>>(d_A_5, d_B_5, d_C_5, N);
+        square<<<108, 128>>>(d_C_5, N);
+    }
+    
+    GmpProfiler::getInstance()->popRange("BandwidthDist", GmpProfileType::CONCURRENT_KERNEL);
+}
+
+void launch_kernels()
 {
     size_t size = N * sizeof(float);
+    size_t large_size = LARGE_N * sizeof(float);
 
     // No need to initialize the input data, as we are not copying from host to device
     // If N is too large, these host arrays lead to segment fault
@@ -166,6 +209,7 @@ void launch_add()
     float *d_A_2, *d_B_2, *d_C_2;
     float *d_A_3, *d_B_3, *d_C_3;
     float *d_A_4, *d_B_4, *d_C_4;
+    float *d_A_5, *d_B_5, *d_C_5;   // Large arraies
 
     cudaMalloc((void **)&d_A_1, size);
     cudaMalloc((void **)&d_B_1, size);
@@ -182,9 +226,14 @@ void launch_add()
     cudaMalloc((void **)&d_A_4, size);
     cudaMalloc((void **)&d_B_4, size);
     cudaMalloc((void **)&d_C_4, size);
+
+    cudaMalloc((void **)&d_A_5, large_size);
+    cudaMalloc((void **)&d_B_5, large_size);
+    cudaMalloc((void **)&d_C_5, large_size);
     printf("Allocated device memory\n");
 
     // Copy from host to device
+    // Note: We skip the memory copy time in profiling, as we want to focus on kernel execution
     // cudaMemcpy(d_A_1, h_A, size, cudaMemcpyHostToDevice);
     // cudaMemcpy(d_B_1, h_B, size, cudaMemcpyHostToDevice);
     // cudaMemcpy(d_A_2, h_A, size, cudaMemcpyHostToDevice);
@@ -204,31 +253,10 @@ void launch_add()
     // vecAdd_thrust(d_A_2, d_B_2, d_C_2, N);
     // GmpProfiler::getInstance()->popRange("vecadd_thrust", GmpProfileType::CONCURRENT_KERNEL);
 
-    // 3 sets of tests for GMP
 
-    // Normal
-    GmpProfiler::getInstance()->pushRange("saxpy1", GmpProfileType::CONCURRENT_KERNEL);
-    auto start = std::chrono::high_resolution_clock::now();
-    for(int i=0;i<110;i++){
-        saxpy<<<4, 256>>>(N, 2.0f, d_A_1, d_B_1);
-        multiply_complex<<<4, 256>>>(d_A_3, d_B_3, d_C_3, N);
-        multiply<<<4, 256>>>(d_A_2, d_B_2, d_C_2, N);
-        square<<<4, 256>>>(d_A_4, N);
-    }
-    auto end = std::chrono::high_resolution_clock::now();
-    std::chrono::duration<double, std::nano> duration = end - start;
-    printf("Time taken for kernel launches: %f ns\n",
-           duration.count());
-    GmpProfiler::getInstance()->popRange("saxpy1", GmpProfileType::CONCURRENT_KERNEL);
-    // GmpProfiler::getInstance()->pushRange("saxpy2", GmpProfileType::CONCURRENT_KERNEL);
-    // saxpy<<<108, 128*2>>>(N, 2.0f, d_A_2, d_B_2);
-    // GmpProfiler::getInstance()->popRange("saxpy2", GmpProfileType::CONCURRENT_KERNEL);
-    // GmpProfiler::getInstance()->pushRange("saxpy3", GmpProfileType::CONCURRENT_KERNEL);
-    // saxpy<<<108, 128*4>>>(N, 2.0f, d_A_3, d_B_3);
-    // GmpProfiler::getInstance()->popRange("saxpy3", GmpProfileType::CONCURRENT_KERNEL);
-    // GmpProfiler::getInstance()->pushRange("saxpy4", GmpProfileType::CONCURRENT_KERNEL);
-    // saxpy<<<54, 256>>>(N, 2.0f, d_A_4, d_B_4);
-    // GmpProfiler::getInstance()->popRange("saxpy4", GmpProfileType::CONCURRENT_KERNEL);
+    testLaunchOverhead(d_A_1, d_B_1, d_A_2, d_B_2, d_C_2, d_A_3, d_B_3, d_C_3, d_A_4);
+
+    testBandwidthDist(d_A_5, d_B_5, d_C_5);
 
     // More Computation
     // GmpProfiler::getInstance()->pushRange("saxpy1_more_compute", GmpProfileType::CONCURRENT_KERNEL);
@@ -264,7 +292,7 @@ void launch_add()
     cudaFree(d_C_3);
 }
 
-int main(int argc, char** argv)
+int main(int argc, char **argv)
 {
   std::string outputPath = "";
   GmpOutputKernelReduction outputOption = GmpOutputKernelReduction::SUM;
@@ -304,7 +332,7 @@ int main(int argc, char** argv)
     printf("Starting profiling runs...\n");
     printf("current pass: %zu\n", curr_pass++);
     GmpProfiler::getInstance()->startRangeProfiling();
-    launch_add();
+    launch_kernels();
     GmpProfiler::getInstance()->stopRangeProfiling();
 
     cudaDeviceSynchronize();

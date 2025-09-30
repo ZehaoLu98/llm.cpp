@@ -230,7 +230,7 @@ namespace gpt
           nn::MatMul::Forward(q2d, k2d, preatt2d, factor);
           auto bias_2d = bias_->matrix<Type>(block_size_, block_size_);
           Eigen::array<Eigen::Index, 2> offsets = {0, 0};
-          Eigen::array<Eigen::Index, 2> extents = {T, T};
+          Eigen::array<Eigen::Index, 2> extents = {T, T};   
           preatt2d.device(nn::g_device) =
               preatt2d + bias_2d.slice(offsets, extents);
 

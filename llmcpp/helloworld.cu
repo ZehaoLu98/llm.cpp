@@ -208,7 +208,17 @@ void launch_add()
 
     // Normal
     GmpProfiler::getInstance()->pushRange("saxpy1", GmpProfileType::CONCURRENT_KERNEL);
-    GMP_TIMED("saxpy1", saxpy<<<108, 128>>>(N, 2.0f, d_A_1, d_B_1););
+    auto start = std::chrono::high_resolution_clock::now();
+    for(int i=0;i<110;i++){
+        saxpy<<<4, 256>>>(N, 2.0f, d_A_1, d_B_1);
+        multiply_complex<<<4, 256>>>(d_A_3, d_B_3, d_C_3, N);
+        multiply<<<4, 256>>>(d_A_2, d_B_2, d_C_2, N);
+        square<<<4, 256>>>(d_A_4, N);
+    }
+    auto end = std::chrono::high_resolution_clock::now();
+    std::chrono::duration<double, std::nano> duration = end - start;
+    printf("Time taken for kernel launches: %f ns\n",
+           duration.count());
     GmpProfiler::getInstance()->popRange("saxpy1", GmpProfileType::CONCURRENT_KERNEL);
     // GmpProfiler::getInstance()->pushRange("saxpy2", GmpProfileType::CONCURRENT_KERNEL);
     // saxpy<<<108, 128*2>>>(N, 2.0f, d_A_2, d_B_2);

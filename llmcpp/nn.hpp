@@ -957,9 +957,6 @@ struct SoftmaxCrossEntropy {
     Eigen::array<Eigen::Index, 2> batch_by_one = {batch_size, 1};
     Eigen::array<Eigen::Index, 2> one_by_class = {1, num_class};
 
-    #ifdef TRAINING_FORWARD
-    if (curr_step == 1) GmpProfiler::getInstance()->pushRange("SoftmaxCrossEntropy", GmpProfileType::CONCURRENT_KERNEL);
-    #endif
     GMP_TIMED("SoftmaxCrossEntropy",
     {
     // max_logits along classes.
@@ -983,28 +980,15 @@ struct SoftmaxCrossEntropy {
         (labels * (scratch.log().reshape(batch_by_one).broadcast(one_by_class) -
                    logit_grad))
             .sum(along_class);
-    }
-    );
-    #ifdef TRAINING_FORWARD
-    if(curr_step == 1) GmpProfiler::getInstance()->popRange("SoftmaxCrossEntropy", GmpProfileType::CONCURRENT_KERNEL);
-    #endif
 
-    #ifdef TRAINING_BACKWARD
-    if(curr_step == 1) GmpProfiler::getInstance()->pushRange("SoftmaxCrossEntropy_Backward", GmpProfileType::CONCURRENT_KERNEL);
-    #endif
     // backprop: prob - labels, where
     //   prob = exp(logits - max_logits) / sum(exp(logits - max_logits))
-    GMP_TIMED("SoftmaxCrossEntropy_Backward", 
-      {
         logit_grad.device(g_device) =
         (logit_grad.exp() /
           scratch.reshape(batch_by_one).broadcast(one_by_class)) -
         labels;
-      }
+    }
     );
-    #ifdef TRAINING_BACKWARD
-    if(curr_step == 1) GmpProfiler::getInstance()->popRange("SoftmaxCrossEntropy_Backward", GmpProfileType::CONCURRENT_KERNEL);
-    #endif
   }
 
   Reduction reduction_;

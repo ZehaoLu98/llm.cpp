@@ -170,6 +170,7 @@ namespace gpt
       CHECK(C == n_embed_ && C == y.dimension(2));
 
       // Lazily allocate the memory for activation
+      GMP_TIMED("attention_alloc",
       qkv_->LazyAllocate(B * T * 3 * C);
       q_->LazyAllocate(B * NH * T * HS);
       k_->LazyAllocate(B * NH * HS * T);
@@ -178,7 +179,7 @@ namespace gpt
       preatt_softmax_->LazyAllocate(B * NH * T * T);
       att_->LazyAllocate(B * NH * T * HS);
       att2_->LazyAllocate(B * T * NH * HS);
-
+      );
       auto _x = MakeConstMatrix(x.data(), B * T, C);
       auto qkv = MakeMatrix(qkv_->data<Type>(), B * T, 3 * C);
       c_attn_->Forward(_x, qkv);
